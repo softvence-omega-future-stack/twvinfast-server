@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  
 }
 
 model User {
@@ -15,7 +15,7 @@ model User {
   password       String
   role           Role      @default(USER)
   status         Status    @default(ACTIVE)
-  companyId      Int?
+  companyId    Int?
   company        Company?  @relation(fields: [companyId], references: [id])
   location       String?
   twoFA          Boolean   @default(false)
