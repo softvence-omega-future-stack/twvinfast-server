@@ -43,6 +43,7 @@ export class UserService {
       },
     });
     const { password, ...userWithoutPassword } = result;
+
     return userWithoutPassword;
   }
 }
