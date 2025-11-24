@@ -16,6 +16,13 @@ export class CreateUserDto {
   emailSignature?: string;
   timeZone?: string;
 }
+export class LoginDto {
+  @IsEmail()
+  email: string;
+  @IsString()
+  password: string;
+}
+
 export class UpdateUserDto {
   name?: string;
   phone?: string;
