@@ -21,6 +21,7 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard('jwt-refresh'))
+  @Public()
   @Post('refresh')
   refresh(@Req() req) {
     // sub is number (your Prisma id)
@@ -41,5 +42,10 @@ export class AuthController {
   @Get('admin-only')
   getAdminData() {
     return 'Only admin can access this.';
+  }
+  @Roles(Role.SUPERADMIN)
+  @Get('superadmin-only')
+  getSuperAdminData() {
+    return 'Only superAdmin can access this.';
   }
 }

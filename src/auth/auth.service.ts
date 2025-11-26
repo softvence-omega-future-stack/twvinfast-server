@@ -60,6 +60,8 @@ export class AuthService {
         name: dto.name,
         email: dto.email,
         password: hashedPassword,
+        role: dto.role || 'USER',
+        status: dto.status || 'ACTIVE',
         // other fields get defaults
       },
     });
@@ -134,7 +136,7 @@ export class AuthService {
     if (!user || !user.refreshToken) {
       throw new UnauthorizedException('Access denied');
     }
-    console.log(user);
+    // console.log(user);
 
     const isValid = await bcrypt.compare(refreshToken, user.refreshToken);
     if (!isValid) {
