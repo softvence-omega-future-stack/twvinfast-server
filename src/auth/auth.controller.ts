@@ -3,8 +3,8 @@ import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
 import { CreateUserDto, LoginDto } from './dto/registerUser.dto';
 import { Roles } from './decorators/roles.decorator';
-import { Role } from '@prisma/client';
 import { Public } from './decorators/public.decorator';
+import { AppRole } from './enums/role.enum';
 
 @Controller('auth')
 export class AuthController {
@@ -38,12 +38,12 @@ export class AuthController {
   protected(@Req() req) {
     return this.authService.getProtectedResource(req);
   }
-  @Roles(Role.ADMIN)
+  @Roles(AppRole.ADMIN)
   @Get('admin-only')
   getAdminData() {
     return 'Only admin can access this.';
   }
-  @Roles(Role.SUPERADMIN)
+  @Roles(AppRole.SUPERADMIN)
   @Get('superadmin-only')
   getSuperAdminData() {
     return 'Only superAdmin can access this.';

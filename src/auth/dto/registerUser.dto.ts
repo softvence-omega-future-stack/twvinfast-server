@@ -1,20 +1,44 @@
-import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
+import {
+  IsEmail,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 
 export class CreateUserDto {
+  @IsNotEmpty()
   @IsString()
-  name?: string;
+  name: string;
+
   @IsEmail()
   email: string;
-  phone?: string;
-  @IsString()
+
+  @IsNotEmpty()
+  @MinLength(6)
   password: string;
-  role?: any;
-  status?: any;
-  companyId?: number;
-  location?: string;
-  twoFA?: boolean;
-  emailSignature?: string;
-  timeZone?: string;
+
+  // Optional confirm password field
+  @IsOptional()
+  @MinLength(6)
+  private _confirmPassword?: string | undefined;
+  public get confirmPassword(): string | undefined {
+    return this._confirmPassword;
+  }
+  public set confirmPassword(value: string | undefined) {
+    this._confirmPassword = value;
+  }
+
+  @IsInt()
+  role_id: number;
+
+  @IsOptional()
+  @IsInt()
+  business_id?: number;
+  @IsOptional()
+  @IsString()
+  status?: string;
 }
 export class LoginDto {
   @IsEmail()

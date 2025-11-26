@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { CreateUserDto } from 'src/auth/dto/registerUser.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UserService {
@@ -9,41 +10,60 @@ export class UserService {
   async findByEmail(email: string) {
     return await this.prisma.user.findUnique({
       where: { email },
+      include: {
+        role: true,
+        business: true,
+      },
     });
   }
 
   async createUser(data: CreateUserDto) {
-    let companyId: number | null = null;
+    let businessId: number | null = null;
 
-    // 🔍 If companyId is provided, attempt to validate
-    if (data.companyId) {
-      const company = await this.prisma.company.findUnique({
-        where: { id: data.companyId },
+    // 🔍 If business_id exists → validate it
+    if (data.business_id) {
+      const business = await this.prisma.business.findUnique({
+        where: { id: data.business_id },
       });
 
-      // If exists → use it, otherwise → ignore and set null
-      if (company) {
-        companyId = data.companyId;
+      if (!business) {
+        throw new NotFoundException(
+          `Business ID ${data.business_id} not found`,
+        );
       }
+
+      businessId = data.business_id;
     }
-    // ✅ CREATE user safely
-    const result = await this.prisma.user.create({
+
+    // 🔐 Hash password
+    const hashed = await bcrypt.hash(data.password, 10);
+
+    // ✅ CREATE USER (Prisma schema compliant)
+    const user = await this.prisma.user.create({
       data: {
         name: data.name,
         email: data.email,
-        phone: data.phone,
-        password: data.password,
-        role: data.role ?? 'USER',
-        status: data.status ?? 'ACTIVE',
-        companyId,
-        location: data.location,
-        twoFA: data.twoFA ?? false,
-        emailSignature: data.emailSignature,
-        timeZone: data.timeZone,
+        password_hash: hashed,
+
+        // 🔥 Connect Role
+        role: {
+          connect: { id: data.role_id },
+        },
+
+        // 🔥 Connect Business (optional)
+        business: businessId ? { connect: { id: businessId } } : undefined,
+
+        status: data.status ?? null, // Your Prisma schema allows string?
+      },
+      include: {
+        role: true,
+        business: true,
       },
     });
-    const { password, ...userWithoutPassword } = result;
 
-    return userWithoutPassword;
+    // 🧹 Remove password_hash from response
+    const { password_hash, ...cleanUser } = user;
+
+    return cleanUser;
   }
 }
