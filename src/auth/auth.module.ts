@@ -3,18 +3,43 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UserModule } from 'src/user/user.module';
 import { JwtModule } from '@nestjs/jwt';
-import { jwtConstants } from './constants';
+import { PassportModule } from '@nestjs/passport';
+import { AccessTokenStrategy } from './strategies/access-token.strategy';
+import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
+import { PrismaService } from 'prisma/prisma.service';
+import { APP_GUARD } from '@nestjs/core';
+import { RolesGuard } from './strategies/roles.guard';
+import { JwtAuthGuard } from './strategies/jwt-auth.guard';
 
 @Module({
-  providers: [AuthService],
-  controllers: [AuthController],
   imports: [
     UserModule,
-    JwtModule.register({
-      global: true,
-      secret: jwtConstants.secret,
-      signOptions: { expiresIn: '6000s' },
-    }),
+    PassportModule,
+    JwtModule.register({}),
+    // ❗ We DO NOT set secrets here.
+    // They are passed per-strategy to avoid conflicts
   ],
+
+  controllers: [AuthController],
+
+  providers: [
+    AuthService,
+    PrismaService, // Required for AuthService using Prisma
+    AccessTokenStrategy, // Access Token Guard
+    RefreshTokenStrategy, // Refresh Token Guard,
+
+    // 1️⃣ FIRST: Global AuthGuard ('jwt')
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard, // <-- we will create this
+    },
+
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
+
+  exports: [AuthService],
 })
 export class AuthModule {}

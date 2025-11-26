@@ -16,16 +16,20 @@ model User {
   password       String
   role           Role      @default(USER)
   status         Status    @default(ACTIVE)
-  companyId    Int?
+  companyId      Int?
   company        Company?  @relation(fields: [companyId], references: [id])
   location       String?
   twoFA          Boolean   @default(false)
   emailSignature String?
   timeZone       String?
   lastLogin      DateTime?
+
+  refreshToken   String?   // 👈 NEW FIELD
+
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
+
 
 model Company {
   id           Int       @id @default(autoincrement())
