@@ -2,11 +2,16 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'prisma/prisma.service';
-import { CreateUserDto, LoginDto } from './dto/registerUser.dto';
+import {
+  ChangePasswordDto,
+  CreateUserDto,
+  LoginDto,
+} from './dto/registerUser.dto';
 
 @Injectable()
 export class AuthService {
@@ -224,6 +229,58 @@ export class AuthService {
     });
 
     return tokens;
+  }
+
+  // Change Password
+  async changePassword(userId: number, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // 1. Verify current password
+    const isMatch = await bcrypt.compare(
+      dto.currentPassword,
+      user.password_hash,
+    );
+
+    if (!isMatch) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    // 🚨 NEW VALIDATION —
+    // Current password & new password must be DIFFERENT
+    const isSamePassword = await bcrypt.compare(
+      dto.newPassword,
+      user.password_hash,
+    );
+
+    if (isSamePassword) {
+      throw new UnauthorizedException(
+        'New password must be different from the current password',
+      );
+    }
+
+    // 2. Check new password & confirm password match
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new UnauthorizedException(
+        'New password and confirm password do not match',
+      );
+    }
+
+    // 3. Hash new password
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    // 4. Update password
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password_hash: hashedPassword },
+    });
+
+    return { message: 'Password changed successfully' };
   }
 
   // =========================================================

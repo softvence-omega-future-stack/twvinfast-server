@@ -1,7 +1,11 @@
 import { Controller, Post, Get, Body, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
-import { CreateUserDto, LoginDto } from './dto/registerUser.dto';
+import {
+  ChangePasswordDto,
+  CreateUserDto,
+  LoginDto,
+} from './dto/registerUser.dto';
 import { Roles } from './decorators/roles.decorator';
 import { Public } from './decorators/public.decorator';
 import { AppRole } from './enums/role.enum';
@@ -26,6 +30,12 @@ export class AuthController {
   refresh(@Req() req) {
     // sub is number (your Prisma id)
     return this.authService.refreshTokens(req.user.sub, req.user.refreshToken);
+  }
+  @Public()
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  changePassword(@Req() req, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.sub, dto);
   }
 
   // @UseGuards(AuthGuard('jwt'))
