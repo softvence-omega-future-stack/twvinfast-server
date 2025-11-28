@@ -30,6 +30,7 @@ export class UserService {
       include: { role: true, business: true },
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password_hash, ...clean } = user;
     return clean;
   }

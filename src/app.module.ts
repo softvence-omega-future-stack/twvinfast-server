@@ -5,15 +5,17 @@ import { UserModule } from './user/user.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
 import { MailModule } from './mail/mail.module';
+import { CompanyModule } from './company/company.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
+    AuthModule,
     PrismaModule,
     UserModule,
-    ConfigModule.forRoot({
-      isGlobal: true, // makes it available everywhere
-    }),
     MailModule,
+    CompanyModule,
+    ConfigModule.forRoot({ isGlobal: true }),
   ],
   controllers: [AppController],
   providers: [AppService],
