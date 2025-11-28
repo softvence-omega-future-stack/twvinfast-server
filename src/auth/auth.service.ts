@@ -16,13 +16,11 @@ import {
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService,
+    private prisma: PrismaService,
+    private jwt: JwtService,
   ) {}
 
-  // =========================================================
-  // 🔥 GENERATE ACCESS + REFRESH TOKENS
-  // =========================================================
+  // ---------- Generate Tokens ----------
   async generateTokens(user: any) {
     const payload = {
       sub: user.id,
@@ -30,14 +28,14 @@ export class AuthService {
       role: user.role,
     };
 
-    const accessToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_ACCESS_SECRET || 'access_secret_fallback',
-      expiresIn: process.env.JWT_ACCESS_EXPIRES as unknown as number,
+    const accessToken = await this.jwt.signAsync(payload, {
+      secret: process.env.JWT_ACCESS_SECRET,
+      expiresIn: '15m',
     });
 
-    const refreshToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_REFRESH_SECRET || 'refresh_secret_fallback',
-      expiresIn: process.env.JWT_REFRESH_EXPIRES as unknown as number,
+    const refreshToken = await this.jwt.signAsync(payload, {
+      secret: process.env.JWT_REFRESH_SECRET,
+      expiresIn: '7d',
     });
 
     return { accessToken, refreshToken };
@@ -47,141 +45,66 @@ export class AuthService {
     return bcrypt.hash(token, 10);
   }
 
-  // =========================================================
-  // 🔥 REGISTER
-  // =========================================================
-  // async userRegister(dto: CreateUserDto) {
-  //   const existing = await this.prisma.user.findUnique({
-  //     where: { email: dto.email },
-  //   });
-  //   if (existing) {
-  //     throw new ConflictException('Email already exists');
-  //   }
-
-  //   const hashedPassword = await bcrypt.hash(dto.password, 10);
-
-  //   const user = await this.prisma.user.create({
-  //     data: {
-  //       name: dto.name,
-  //       email: dto.email,
-  //       password_hash: hashedPassword,
-
-  //       role: { connect: { id: dto.role_id } },
-
-  //       business: dto.business_id
-  //         ? { connect: { id: dto.business_id } }
-  //         : undefined,
-  //     },
-  //   });
-
-  //   const { accessToken, refreshToken } = await this.generateTokens(user);
-
-  //   const hashedRefresh = await this.hashRefreshToken(refreshToken);
-  //   await this.prisma.user.update({
-  //     where: { id: user.id }, // 👈 Int id
-  //     data: { refreshToken: hashedRefresh },
-  //   });
-
-  //   return {
-  //     message: 'User registered successfully',
-  //     user: {
-  //       id: user.id,
-  //       name: user.name,
-  //       email: user.email,
-  //       role: user.role,
-  //     },
-  //     accessToken,
-  //     refreshToken,
-  //   };
-  // }
-  async userRegister(dto: CreateUserDto) {
-    // 1. Check existing user
+  // ---------- Register ----------
+  async register(dto: CreateUserDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    if (existing) {
-      throw new ConflictException('Email already exists');
-    }
+    if (existing) throw new ConflictException('Email already exists');
 
-    // 2. Hash password
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // 3. Create user with relations
     const user = await this.prisma.user.create({
       data: {
         name: dto.name,
         email: dto.email,
         password_hash: hashedPassword,
-
-        // 🔥 Correct relation connect()
-        role: {
-          connect: { id: dto.role_id },
-        },
-
+        role: { connect: { id: dto.role_id } },
         business: dto.business_id
           ? { connect: { id: dto.business_id } }
           : undefined,
       },
-      include: {
-        role: true, // So we can return role info
-        business: true, // Optional: helps frontend
-      },
+      include: { role: true, business: true },
     });
 
-    // 4. Generate access + refresh tokens
     const { accessToken, refreshToken } = await this.generateTokens(user);
-
-    // 5. Store hashed refresh token in DB
-    const hashedRefresh = await this.hashRefreshToken(refreshToken);
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: hashedRefresh },
+      data: { refreshToken: await this.hashRefreshToken(refreshToken) },
     });
 
-    // 6. Final response
     return {
       message: 'User registered successfully',
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role?.name,
-        business: user.business, // optional
+        role: user.role.name,
       },
       accessToken,
       refreshToken,
     };
   }
 
-  // =========================================================
-  // 🔥 LOGIN
-  // =========================================================
-  async userLogin(dto: LoginDto) {
-    // const user = await this.prisma.user.findUnique({
-    //   where: { email: dto.email },
-    // });
+  // ---------- Login ----------
+  async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      include: { role: true, business: true },
+      include: { role: true },
     });
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+    if (!user) throw new UnauthorizedException('Invalid credentials');
 
-    const isMatch = await bcrypt.compare(dto.password, user.password_hash);
-    if (!isMatch) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
+    const match = await bcrypt.compare(dto.password, user.password_hash);
+    if (!match) throw new UnauthorizedException('Invalid credentials');
 
-    const { accessToken, refreshToken } = await this.generateTokens(user);
+    const tokens = await this.generateTokens(user);
 
-    const hashedRefresh = await this.hashRefreshToken(refreshToken);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: hashedRefresh },
+      data: { refreshToken: await this.hashRefreshToken(tokens.refreshToken) },
     });
 
     return {
@@ -190,116 +113,73 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role?.name,
+        role: user.role.name,
       },
-      accessToken,
-      refreshToken,
+      ...tokens,
     };
   }
 
-  // =========================================================
-  // 🔥 REFRESH TOKEN
-  // =========================================================
+  // ---------- Refresh Tokens ----------
   async refreshTokens(userId: number, refreshToken: string) {
-    // const user = await this.prisma.user.findUnique({
-    //   where: { id: userId }, // 👈 Int id
-    // });
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { role: true },
     });
 
-    // console.log(refreshToken);
-    if (!user || !user.refreshToken) {
+    if (!user || !user.refreshToken)
       throw new UnauthorizedException('Access denied');
-    }
-    // console.log(user);
 
-    const isValid = await bcrypt.compare(refreshToken, user.refreshToken);
-    if (!isValid) {
-      throw new UnauthorizedException('Invalid refresh token');
-    }
+    const valid = await bcrypt.compare(refreshToken, user.refreshToken);
+    if (!valid) throw new UnauthorizedException('Invalid refresh token');
 
     const tokens = await this.generateTokens(user);
 
-    const hashed = await this.hashRefreshToken(tokens.refreshToken);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: hashed },
+      data: { refreshToken: await this.hashRefreshToken(tokens.refreshToken) },
     });
 
     return tokens;
   }
 
-  // Change Password
+  // ---------- Change Password ----------
   async changePassword(userId: number, dto: ChangePasswordDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
 
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+    if (!user) throw new NotFoundException('User not found');
 
-    // 1. Verify current password
-    const isMatch = await bcrypt.compare(
-      dto.currentPassword,
-      user.password_hash,
-    );
+    const match = await bcrypt.compare(dto.currentPassword, user.password_hash);
+    if (!match) throw new UnauthorizedException('Current password incorrect');
 
-    if (!isMatch) {
-      throw new UnauthorizedException('Current password is incorrect');
-    }
-
-    // 🚨 NEW VALIDATION —
-    // Current password & new password must be DIFFERENT
-    const isSamePassword = await bcrypt.compare(
-      dto.newPassword,
-      user.password_hash,
-    );
-
-    if (isSamePassword) {
+    const isSame = await bcrypt.compare(dto.newPassword, user.password_hash);
+    if (isSame)
       throw new UnauthorizedException(
-        'New password must be different from the current password',
+        'New password must be different than current password',
       );
-    }
 
-    // 2. Check new password & confirm password match
-    if (dto.newPassword !== dto.confirmPassword) {
-      throw new UnauthorizedException(
-        'New password and confirm password do not match',
-      );
-    }
+    if (dto.newPassword !== dto.confirmPassword)
+      throw new UnauthorizedException("Passwords don't match");
 
-    // 3. Hash new password
-    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
-
-    // 4. Update password
     await this.prisma.user.update({
       where: { id: userId },
-      data: { password_hash: hashedPassword },
+      data: { password_hash: await bcrypt.hash(dto.newPassword, 10) },
     });
 
-    return { message: 'Password changed successfully' };
+    return { message: 'Password updated successfully' };
   }
 
-  // =========================================================
-  // 🔥 LOGOUT
-  // =========================================================
+  // ---------- Logout ----------
   async logout(userId: number) {
     await this.prisma.user.update({
-      where: { id: userId }, // 👈 Int id
+      where: { id: userId },
       data: { refreshToken: null },
     });
 
-    return { message: 'Logged out successfully' };
+    return { message: 'Logged out' };
   }
 
-  // =========================================================
-  // 🔒 PROTECTED RESOURCE
-  // =========================================================
-  getProtectedResource(req: any) {
-    const user = req.user;
-    return { message: 'This is a protected resource', user };
+  // ---------- Protected route ----------
+  getProtected(user: any) {
+    return { message: 'Protected', user };
   }
 }

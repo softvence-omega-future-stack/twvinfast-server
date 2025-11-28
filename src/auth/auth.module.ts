@@ -4,12 +4,12 @@ import { AuthController } from './auth.controller';
 import { UserModule } from 'src/user/user.module';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { AccessTokenStrategy } from './strategies/access-token.strategy';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 import { PrismaService } from 'prisma/prisma.service';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './strategies/roles.guard';
 import { JwtAuthGuard } from './strategies/jwt-auth.guard';
+import { AccessTokenStrategy } from './strategies/access-token.strategy';
 
 @Module({
   imports: [
