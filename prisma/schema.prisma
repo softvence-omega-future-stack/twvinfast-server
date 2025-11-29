@@ -1,4 +1,4 @@
-// generator client {
+//  generator client {
 //   provider = "prisma-client-js"
 // }
 
@@ -7,139 +7,67 @@
 //   url      = env("DATABASE_URL")
 // }
 
+// ///////////////////////////////
+// // BUSINESS (TENANT)
+// ///////////////////////////////
 // model Business {
-//   id                    Int                    @id @default(autoincrement())
-//   name                  String
-//   website               String?
-//   address               String?
-//   primary_contact_email String?
-//   status                String?
-//   created_at            DateTime               @default(now())
-//   updated_at            DateTime               @updatedAt
-//   credits               BusinessCredits?
-//   settings              BusinessSettings?
-//   subscriptions         BusinessSubscription[]
+//   id         Int       @id @default(autoincrement())
+//   name       String
+//   email      String?
+//   website    String?
+//   status     String?   @default("ACTIVE")
+//   created_at DateTime  @default(now())
+//   updated_at DateTime  @updatedAt
+
+//   // Relations
+//   users         User[]
+//   mailboxes     Mailbox[]
+//   threads       EmailThread[]
+//   emails        Email[]
+//   customers     Customer[]
+//   opportunities Opportunity[]
+//   integrations  Integration[]
 // }
 
-// model BusinessSubscription {
-//   id                Int                @id @default(autoincrement())
-//   business_id       Int
-//   plan_id           Int
-//   billing_cycle     BillingCycle
-//   status            SubscriptionStatus
-//   start_date        DateTime?
-//   end_date          DateTime?
-//   next_billing_date DateTime?
-//   business          Business           @relation(fields: [business_id], references: [id])
-//   plan              SubscriptionPlan   @relation(fields: [plan_id], references: [id])
-// }
-
-// model SubscriptionPlan {
-//   id            Int                    @id @default(autoincrement())
-//   name          String
-//   description   String?
-//   price_cents   Int
-//   billing_cycle BillingCycle
-//   features_json Json?
-//   subscriptions BusinessSubscription[]
-// }
-
-// model Invoice {
-//   id                       Int       @id @default(autoincrement())
-//   business_subscription_id Int
-//   amount_cents             Int
-//   issued_at                DateTime?
-//   due_at                   DateTime?
-//   paid_at                  DateTime?
-//   status                   String?
-// }
-
-// model BusinessCredits {
-//   id            Int       @id @default(autoincrement())
-//   business_id   Int       @unique
-//   total_credits Int?
-//   used_credits  Int?
-//   period_start  DateTime?
-//   period_end    DateTime?
-//   business      Business  @relation(fields: [business_id], references: [id])
-// }
-
-// model BusinessSettings {
-//   id                       Int      @id @default(autoincrement())
-//   business_id              Int      @unique
-//   primary_colour           String?
-//   secondary_colour         String?
-//   accent_colour            String?
-//   logo_url                 String?
-//   timezone                 String?
-//   show_logo_in_sidebar     Boolean? @default(false)
-//   compact_mode             Boolean? @default(false)
-//   show_performance_metrics Boolean? @default(true)
-//   business                 Business @relation(fields: [business_id], references: [id])
-// }
-
+// ///////////////////////////////
+// // ROLE & USER
+// ///////////////////////////////
 // model Role {
-//   id          Int               @id @default(autoincrement())
-//   name        String
-//   scope       Scope
+//   id          Int     @id @default(autoincrement())
+//   name        String  @unique
 //   description String?
-//   permissions RolePermissions[]
-// }
 
-// model Permission {
-//   id          Int               @id @default(autoincrement())
-//   name        String
-//   description String?
-//   roles       RolePermissions[]
-// }
-
-// model RolePermissions {
-//   role_id       Int
-//   permission_id Int
-//   permission    Permission @relation(fields: [permission_id], references: [id])
-//   role          Role       @relation(fields: [role_id], references: [id])
-
-//   @@id([role_id, permission_id])
+//   users       User[]
 // }
 
 // model User {
 //   id                 Int       @id @default(autoincrement())
-//   email              String    @unique
 //   name               String
-//   refreshToken       String?
-//   business_id        Int?
-//   created_at         DateTime  @default(now())
-//   last_login_at      DateTime?
+//   email              String    @unique
 //   password_hash      String
-//   role_id            Int
+//   status             String?   @default("ACTIVE")
 //   two_factor_enabled Boolean   @default(false)
+//   last_login_at      DateTime?
+//   refreshToken       String?
+//   created_at         DateTime  @default(now())
 //   updated_at         DateTime  @updatedAt
-//   status             String?
-  
+
+//   // FK
+//   role_id            Int
+//   business_id        Int?
+
+//   // Relations
+//   role               Role      @relation(fields: [role_id], references: [id])
+//   business           Business? @relation(fields: [business_id], references: [id])
+
+//   mailboxes          Mailbox[]
+//   emails             Email[]
+//   aiActions          AIAction[]
 // }
 
-// model LoginLog {
-//   id         Int      @id @default(autoincrement())
-//   user_id    Int?
-//   timestamp  DateTime @default(now())
-//   location   String?
-//   ip_address String?
-//   status     String?
-//   user_agent String?
-// }
-
-// model ActivityLog {
-//   id            Int      @id @default(autoincrement())
-//   business_id   Int?
-//   user_id       Int
-//   action        String
-//   resource_type String?
-//   resource_id   Int?
-//   description   String?
-//   ip_address    String?
-//   created_at    DateTime @default(now())
-// }
-
+// ///////////////////////////////
+// // MAILBOX
+// ///////////////////////////////
 // model Mailbox {
 //   id            Int       @id @default(autoincrement())
 //   business_id   Int
@@ -150,31 +78,46 @@
 //   imap_port     Int?
 //   smtp_host     String?
 //   smtp_port     Int?
-//   is_ssl        Boolean?
-//   access_token  String?
-//   refresh_token String?
-//   connected_at  DateTime?
-//   last_sync_at  DateTime?
-//   status        String?
+//   is_ssl        Boolean?  @default(true)
+//   created_at    DateTime  @default(now())
+
+//   business      Business  @relation(fields: [business_id], references: [id])
+//   user          User      @relation(fields: [user_id], references: [id])
+
+//   threads       EmailThread[]
+//   emails        Email[]
 // }
 
+// ///////////////////////////////
+// // EMAIL THREAD (CONVERSATION)
+// ///////////////////////////////
 // model EmailThread {
-//   id              Int       @id @default(autoincrement())
+//   id              Int        @id @default(autoincrement())
 //   business_id     Int
 //   mailbox_id      Int
 //   customer_id     Int?
 //   subject         String?
 //   last_message_at DateTime?
-//   created_at      DateTime  @default(now())
-//   updated_at      DateTime  @updatedAt
+//   created_at      DateTime   @default(now())
+//   updated_at      DateTime   @updatedAt
+
+//   business        Business   @relation(fields: [business_id], references: [id])
+//   mailbox         Mailbox    @relation(fields: [mailbox_id], references: [id])
+//   customer        Customer?  @relation(fields: [customer_id], references: [id])
+
+//   emails          Email[]
 // }
 
+// ///////////////////////////////
+// // EMAIL
+// ///////////////////////////////
 // model Email {
 //   id            Int          @id @default(autoincrement())
 //   business_id   Int
-//   thread_id     Int
 //   mailbox_id    Int
-//   user_id       Int
+//   thread_id     Int
+//   user_id       Int?
+
 //   message_id    String?
 //   in_reply_to   String?
 //   from_address  String?
@@ -191,35 +134,21 @@
 //   sent_at       DateTime?
 //   created_at    DateTime     @default(now())
 //   updated_at    DateTime     @updatedAt
+
+//   business      Business     @relation(fields: [business_id], references: [id])
+//   mailbox       Mailbox      @relation(fields: [mailbox_id], references: [id])
+//   thread        EmailThread  @relation(fields: [thread_id], references: [id])
+//   user          User?        @relation(fields: [user_id], references: [id])
+
+//   insight       AIEmailInsight?
+//   aiActions     AIAction[]
 // }
 
-// model EmailAttachment {
-//   id          Int      @id @default(autoincrement())
-//   email_id    Int
-//   file_name   String
-//   mime_type   String?
-//   file_size   Int?
-//   storage_url String
-//   created_at  DateTime @default(now())
-// }
-
-// model Label {
-//   id          Int     @id @default(autoincrement())
-//   business_id Int
-//   name        String
-//   colour      String?
-//   description String?
-// }
-
-// model EmailLabel {
-//   email_id Int
-//   label_id Int
-
-//   @@id([email_id, label_id])
-// }
-
+// ///////////////////////////////
+// // CRM: CUSTOMER + OPPORTUNITY
+// ///////////////////////////////
 // model Customer {
-//   id              Int       @id @default(autoincrement())
+//   id              Int          @id @default(autoincrement())
 //   business_id     Int
 //   name            String
 //   email           String?
@@ -228,6 +157,10 @@
 //   lead_score      Int?
 //   value_estimate  Float?
 //   last_contact_at DateTime?
+
+//   business        Business      @relation(fields: [business_id], references: [id])
+//   threads         EmailThread[]
+//   opportunities   Opportunity[]
 // }
 
 // model Opportunity {
@@ -238,162 +171,53 @@
 //   stage           OpportunityStage
 //   value_amount    Float?
 //   status          String?
-//   won_lost_reason String?
-//   close_date      DateTime?
 //   created_at      DateTime         @default(now())
+
+//   business        Business         @relation(fields: [business_id], references: [id])
+//   customer        Customer         @relation(fields: [customer_id], references: [id])
 // }
 
+// ///////////////////////////////
+// // AI: INSIGHT + ACTION
+// ///////////////////////////////
 // model AIEmailInsight {
 //   id                Int      @id @default(autoincrement())
 //   email_id          Int      @unique
 //   summary           String?
 //   suggested_actions String?
-//   lead_score        Int?
-//   contact_email     String?
-//   meta_json         Json?
 //   created_at        DateTime @default(now())
+
+//   email             Email    @relation(fields: [email_id], references: [id])
 // }
 
 // model AIAction {
-//   id             Int          @id @default(autoincrement())
-//   email_id       Int
-//   user_id        Int?
-//   action_type    AIActionType
-//   input_snapshot Json?
-//   output_data    Json?
-//   created_at     DateTime     @default(now())
+//   id            Int          @id @default(autoincrement())
+//   email_id      Int
+//   user_id       Int?
+//   action_type   AIActionType
+//   created_at    DateTime     @default(now())
+
+//   email         Email        @relation(fields: [email_id], references: [id])
+//   user          User?        @relation(fields: [user_id], references: [id])
 // }
 
-// model Dataset {
-//   id           Int     @id @default(autoincrement())
-//   business_id  Int
-//   name         String
-//   type         String?
-//   size_gb      Float?
-//   record_count Int?
-//   status       String?
-// }
-
-// model TrainingDocument {
-//   id          Int      @id @default(autoincrement())
-//   business_id Int
-//   dataset_id  Int?
-//   file_name   String
-//   file_type   String?
-//   file_size   Int?
-//   storage_url String
-//   category    String?
-//   tags        String?
-//   uploaded_at DateTime @default(now())
-// }
-
-// model AITrainingAuditLog {
-//   id                   Int      @id @default(autoincrement())
-//   business_id          Int
-//   dataset_id           Int?
-//   training_document_id Int?
-//   admin_user_id        Int
-//   action               String
-//   data_type            String?
-//   details              String?
-//   timestamp            DateTime @default(now())
-//   status               String?
-// }
-
-// model AIModel {
-//   id                Int     @id @default(autoincrement())
-//   name              String
-//   provider          String?
-//   status            String?
-//   usage_percent     Float?
-//   uptime_percent    Float?
-//   avg_response_time Float?
-//   overall_accuracy  Float?
-//   cost_per_1k       Float?
-// }
-
-// model SystemPrompt {
-//   id             Int      @id @default(autoincrement())
-//   business_id    Int?
-//   name           String
-//   description    String?
-//   prompt_content String
-//   scope          Scope
-//   status         String?
-//   created_by     Int
-//   created_at     DateTime @default(now())
-// }
-
-// model ModelPrompt {
-//   model_id  Int
-//   prompt_id Int
-
-//   @@id([model_id, prompt_id])
-// }
-
+// ///////////////////////////////
+// // INTEGRATION
+// ///////////////////////////////
 // model Integration {
-//   id                Int             @id @default(autoincrement())
-//   business_id       Int
-//   type              IntegrationType
-//   status            String?
-//   config_json       Json?
-//   last_sync_at      DateTime?
-//   auto_sync_enabled Boolean         @default(false)
+//   id          Int             @id @default(autoincrement())
+//   business_id Int
+//   type        IntegrationType
+//   config_json Json?
+//   last_sync_at DateTime?
+//   auto_sync_enabled Boolean   @default(false)
+
+//   business    Business        @relation(fields: [business_id], references: [id])
 // }
 
-// model BusinessNotificationRule {
-//   id                     Int     @id @default(autoincrement())
-//   business_id            Int
-//   rule_name              String
-//   trigger_type           String
-//   trigger_condition_json Json?
-//   action_type            String
-//   action_config_json     Json?
-//   status                 String?
-// }
-
-// model PlatformApiKey {
-//   id           Int       @id @default(autoincrement())
-//   business_id  Int?
-//   name         String
-//   api_key_hash String
-//   permissions  Json?
-//   created_at   DateTime  @default(now())
-//   last_used_at DateTime?
-//   status       String?
-// }
-
-// model PlatformSecuritySettings {
-//   id                      Int      @id @default(autoincrement())
-//   enforce_https           Boolean? @default(true)
-//   rate_limit_per_minute   Int?
-//   ddos_protection_enabled Boolean? @default(true)
-//   waf_enabled             Boolean? @default(true)
-// }
-
-// model ComplianceSettings {
-//   id                         Int      @id @default(autoincrement())
-//   gdpr_enabled               Boolean? @default(true)
-//   ccpa_enabled               Boolean? @default(false)
-//   hipaa_enabled              Boolean? @default(false)
-//   sox_enabled                Boolean? @default(false)
-//   privacy_policy_url         String?
-//   terms_of_service_url       String?
-//   data_retention_period_days Int?
-// }
-
-// enum SubscriptionStatus {
-//   ACTIVE
-//   CANCELED
-//   TRIALING
-//   EXPIRED
-// }
-
-// enum BillingCycle {
-//   MONTHLY
-//   YEARLY
-// }
-
+// ///////////////////////////////
+// // ENUMS
+// ///////////////////////////////
 // enum EmailFolder {
 //   INBOX
 //   SENT
@@ -418,236 +242,20 @@
 //   FOLLOWUP_SUGGESTION
 // }
 
-// enum Scope {
-//   PLATFORM
-//   BUSINESS
-// }
-
 // enum IntegrationType {
-//   GOOGLE_DRIVE
-//   TRELLO
-//   GOOGLE_CALENDAR
-//   OUTLOOK_CALENDAR
-//   ICAL
-//   SLACK
-//   SMS
+//   GOOGLE
+//   OUTLOOK
+//   SMTP
+//   OTHER
 // }
 
- generator client {
+generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-}
-
-///////////////////////////////
-// BUSINESS (TENANT)
-///////////////////////////////
-model Business {
-  id         Int       @id @default(autoincrement())
-  name       String
-  email      String?
-  website    String?
-  status     String?   @default("ACTIVE")
-  created_at DateTime  @default(now())
-  updated_at DateTime  @updatedAt
-
-  // Relations
-  users         User[]
-  mailboxes     Mailbox[]
-  threads       EmailThread[]
-  emails        Email[]
-  customers     Customer[]
-  opportunities Opportunity[]
-  integrations  Integration[]
-}
-
-///////////////////////////////
-// ROLE & USER
-///////////////////////////////
-model Role {
-  id          Int     @id @default(autoincrement())
-  name        String  @unique
-  description String?
-
-  users       User[]
-}
-
-model User {
-  id                 Int       @id @default(autoincrement())
-  name               String
-  email              String    @unique
-  password_hash      String
-  status             String?   @default("ACTIVE")
-  two_factor_enabled Boolean   @default(false)
-  last_login_at      DateTime?
-  refreshToken       String?
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
-
-  // FK
-  role_id            Int
-  business_id        Int?
-
-  // Relations
-  role               Role      @relation(fields: [role_id], references: [id])
-  business           Business? @relation(fields: [business_id], references: [id])
-
-  mailboxes          Mailbox[]
-  emails             Email[]
-  aiActions          AIAction[]
-}
-
-///////////////////////////////
-// MAILBOX
-///////////////////////////////
-model Mailbox {
-  id            Int       @id @default(autoincrement())
-  business_id   Int
-  user_id       Int
-  provider      String
-  email_address String
-  imap_host     String?
-  imap_port     Int?
-  smtp_host     String?
-  smtp_port     Int?
-  is_ssl        Boolean?  @default(true)
-  created_at    DateTime  @default(now())
-
-  business      Business  @relation(fields: [business_id], references: [id])
-  user          User      @relation(fields: [user_id], references: [id])
-
-  threads       EmailThread[]
-  emails        Email[]
-}
-
-///////////////////////////////
-// EMAIL THREAD (CONVERSATION)
-///////////////////////////////
-model EmailThread {
-  id              Int        @id @default(autoincrement())
-  business_id     Int
-  mailbox_id      Int
-  customer_id     Int?
-  subject         String?
-  last_message_at DateTime?
-  created_at      DateTime   @default(now())
-  updated_at      DateTime   @updatedAt
-
-  business        Business   @relation(fields: [business_id], references: [id])
-  mailbox         Mailbox    @relation(fields: [mailbox_id], references: [id])
-  customer        Customer?  @relation(fields: [customer_id], references: [id])
-
-  emails          Email[]
-}
-
-///////////////////////////////
-// EMAIL
-///////////////////////////////
-model Email {
-  id            Int          @id @default(autoincrement())
-  business_id   Int
-  mailbox_id    Int
-  thread_id     Int
-  user_id       Int?
-
-  message_id    String?
-  in_reply_to   String?
-  from_address  String?
-  to_addresses  Json?
-  cc_addresses  Json?
-  bcc_addresses Json?
-  subject       String?
-  body_html     String?
-  body_text     String?
-  folder        EmailFolder?
-  is_read       Boolean?     @default(false)
-  is_starred    Boolean?     @default(false)
-  received_at   DateTime?
-  sent_at       DateTime?
-  created_at    DateTime     @default(now())
-  updated_at    DateTime     @updatedAt
-
-  business      Business     @relation(fields: [business_id], references: [id])
-  mailbox       Mailbox      @relation(fields: [mailbox_id], references: [id])
-  thread        EmailThread  @relation(fields: [thread_id], references: [id])
-  user          User?        @relation(fields: [user_id], references: [id])
-
-  insight       AIEmailInsight?
-  aiActions     AIAction[]
-}
-
-///////////////////////////////
-// CRM: CUSTOMER + OPPORTUNITY
-///////////////////////////////
-model Customer {
-  id              Int          @id @default(autoincrement())
-  business_id     Int
-  name            String
-  email           String?
-  phone           String?
-  status          String?
-  lead_score      Int?
-  value_estimate  Float?
-  last_contact_at DateTime?
-
-  business        Business      @relation(fields: [business_id], references: [id])
-  threads         EmailThread[]
-  opportunities   Opportunity[]
-}
-
-model Opportunity {
-  id              Int              @id @default(autoincrement())
-  business_id     Int
-  customer_id     Int
-  name            String
-  stage           OpportunityStage
-  value_amount    Float?
-  status          String?
-  created_at      DateTime         @default(now())
-
-  business        Business         @relation(fields: [business_id], references: [id])
-  customer        Customer         @relation(fields: [customer_id], references: [id])
-}
-
-///////////////////////////////
-// AI: INSIGHT + ACTION
-///////////////////////////////
-model AIEmailInsight {
-  id                Int      @id @default(autoincrement())
-  email_id          Int      @unique
-  summary           String?
-  suggested_actions String?
-  created_at        DateTime @default(now())
-
-  email             Email    @relation(fields: [email_id], references: [id])
-}
-
-model AIAction {
-  id            Int          @id @default(autoincrement())
-  email_id      Int
-  user_id       Int?
-  action_type   AIActionType
-  created_at    DateTime     @default(now())
-
-  email         Email        @relation(fields: [email_id], references: [id])
-  user          User?        @relation(fields: [user_id], references: [id])
-}
-
-///////////////////////////////
-// INTEGRATION
-///////////////////////////////
-model Integration {
-  id          Int             @id @default(autoincrement())
-  business_id Int
-  type        IntegrationType
-  config_json Json?
-  last_sync_at DateTime?
-  auto_sync_enabled Boolean   @default(false)
-
-  business    Business        @relation(fields: [business_id], references: [id])
 }
 
 ///////////////////////////////
@@ -682,4 +290,413 @@ enum IntegrationType {
   OUTLOOK
   SMTP
   OTHER
+}
+
+enum TrainingType {
+  TEXT
+  FILE
+  FAQ
+}
+
+enum HallucinationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum HallucinationStatus {
+  OPEN
+  FIXED
+  DISMISSED
+}
+
+///////////////////////////////
+// BUSINESS (TENANT)
+///////////////////////////////
+model Business {
+  id         Int      @id @default(autoincrement())
+  name       String
+  email      String?
+  website    String?
+  status     String?  @default("ACTIVE")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  users         User[]
+  mailboxes     Mailbox[]
+  threads       EmailThread[]
+  emails        Email[]
+  customers     Customer[]
+  opportunities Opportunity[]
+  integrations  Integration[]
+
+  // AI
+  aiTraining     AiTrainingData[]
+  aiReplies      AiGeneratedReply[]
+  hallucinations AiHallucinationReport[]
+
+  // BILLING
+  subscriptions Subscription[]
+  payments      PaymentHistory[]
+}
+
+///////////////////////////////
+// ROLE & USER
+///////////////////////////////
+model Role {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String?
+
+  users User[]
+}
+
+model User {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  email              String    @unique
+  password_hash      String
+  status             String?   @default("ACTIVE")
+  two_factor_enabled Boolean   @default(false)
+  last_login_at      DateTime?
+  refreshToken       String?
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  // FK
+  role_id     Int
+  business_id Int?
+
+  // Relations
+  role        Role       @relation(fields: [role_id], references: [id])
+  business    Business?  @relation(fields: [business_id], references: [id])
+
+  mailboxes   Mailbox[]
+  emails      Email[]
+  aiActions   AIAction[]
+
+  // AI Back-relations
+  aiReplies      AiGeneratedReply[]
+  hallucinations AiHallucinationReport[]
+
+  // ----------------------------
+  // Stripe Subscription Fields
+  // ----------------------------
+  subscription_id     String?    // Stripe subscription ID
+  stripe_customer_id         String?    // Stripe customer ID
+  subscription_status String?    // "active", "past_due", "canceled"
+}
+
+
+// model User {
+//   id                 Int       @id @default(autoincrement())
+//   name               String
+//   email              String    @unique
+//   password_hash      String
+//   status             String?   @default("ACTIVE")
+//   two_factor_enabled Boolean   @default(false)
+//   last_login_at      DateTime?
+//   refreshToken       String?
+//   created_at         DateTime  @default(now())
+//   updated_at         DateTime  @updatedAt
+
+//   // FK
+//   role_id     Int
+//   business_id Int?
+
+//   // Relations
+//   role     Role      @relation(fields: [role_id], references: [id])
+//   business Business? @relation(fields: [business_id], references: [id])
+
+//   mailboxes Mailbox[]
+//   emails    Email[]
+//   aiActions AIAction[]
+
+//   // AI Back-relations
+//   aiReplies      AiGeneratedReply[]
+//   hallucinations AiHallucinationReport[]
+// }
+
+///////////////////////////////
+// MAILBOX
+///////////////////////////////
+model Mailbox {
+  id            Int      @id @default(autoincrement())
+  business_id   Int
+  user_id       Int
+  provider      String
+  email_address String
+  imap_host     String?
+  imap_port     Int?
+  smtp_host     String?
+  smtp_port     Int?
+  is_ssl        Boolean? @default(true)
+  created_at    DateTime @default(now())
+
+  business Business @relation(fields: [business_id], references: [id])
+  user     User     @relation(fields: [user_id], references: [id])
+
+  threads EmailThread[]
+  emails  Email[]
+}
+
+
+
+// 
+// model MailboxAssignedUser {
+//   id         String  @id @default(cuid())
+//   mailboxId  String
+//   userId     String
+
+//   mailbox    Mailbox @relation(fields: [mailboxId], references: [id])
+//   user       User    @relation(fields: [userId], references: [id])
+// }
+
+///////////////////////////////
+// EMAIL THREAD
+///////////////////////////////
+model EmailThread {
+  id              Int       @id @default(autoincrement())
+  business_id     Int
+  mailbox_id      Int
+  customer_id     Int?
+  subject         String?
+  last_message_at DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  business Business  @relation(fields: [business_id], references: [id])
+  mailbox  Mailbox   @relation(fields: [mailbox_id], references: [id])
+  customer Customer? @relation(fields: [customer_id], references: [id])
+
+  emails Email[]
+}
+
+///////////////////////////////
+// EMAIL
+///////////////////////////////
+model Email {
+  id          Int  @id @default(autoincrement())
+  business_id Int
+  mailbox_id  Int
+  thread_id   Int
+  user_id     Int?
+
+  message_id    String?
+  in_reply_to   String?
+  from_address  String?
+  to_addresses  Json?
+  cc_addresses  Json?
+  bcc_addresses Json?
+  subject       String?
+  body_html     String?
+  body_text     String?
+  folder        EmailFolder?
+  is_read       Boolean?     @default(false)
+  is_starred    Boolean?     @default(false)
+  received_at   DateTime?
+  sent_at       DateTime?
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+
+  business Business    @relation(fields: [business_id], references: [id])
+  mailbox  Mailbox     @relation(fields: [mailbox_id], references: [id])
+  thread   EmailThread @relation(fields: [thread_id], references: [id])
+  user     User?       @relation(fields: [user_id], references: [id])
+
+  insight   AIEmailInsight?
+  aiActions AIAction[]
+
+  aiReplies      AiGeneratedReply[]
+  hallucinations AiHallucinationReport[]
+}
+
+///////////////////////////////
+// CRM MODELS
+///////////////////////////////
+model Customer {
+  id              Int       @id @default(autoincrement())
+  business_id     Int
+  name            String
+  email           String?
+  phone           String?
+  status          String?
+  lead_score      Int?
+  value_estimate  Float?
+  last_contact_at DateTime?
+
+  business      Business      @relation(fields: [business_id], references: [id])
+  threads       EmailThread[]
+  opportunities Opportunity[]
+}
+
+model Opportunity {
+  id           Int              @id @default(autoincrement())
+  business_id  Int
+  customer_id  Int
+  name         String
+  stage        OpportunityStage
+  value_amount Float?
+  status       String?
+  created_at   DateTime         @default(now())
+
+  business Business @relation(fields: [business_id], references: [id])
+  customer Customer @relation(fields: [customer_id], references: [id])
+}
+
+///////////////////////////////
+// AI MODELS
+///////////////////////////////
+model AIEmailInsight {
+  id                Int      @id @default(autoincrement())
+  email_id          Int      @unique
+  summary           String?
+  suggested_actions String?
+  created_at        DateTime @default(now())
+
+  email Email @relation(fields: [email_id], references: [id])
+}
+
+model AIAction {
+  id          Int          @id @default(autoincrement())
+  email_id    Int
+  user_id     Int?
+  action_type AIActionType
+  created_at  DateTime     @default(now())
+
+  email Email @relation(fields: [email_id], references: [id])
+  user  User? @relation(fields: [user_id], references: [id])
+}
+
+model AiGeneratedReply {
+  id          Int  @id @default(autoincrement())
+  email_id    Int
+  user_id     Int?
+  business_id Int
+
+  content    String
+  tone       String?
+  model      String?
+  confidence Float?
+  status     String? @default("SUGGESTED")
+
+  created_at DateTime @default(now())
+
+  email    Email    @relation(fields: [email_id], references: [id])
+  user     User?    @relation(fields: [user_id], references: [id])
+  business Business @relation(fields: [business_id], references: [id])
+
+  hallucinations AiHallucinationReport[]
+}
+
+model AiTrainingData {
+  id          Int          @id @default(autoincrement())
+  business_id Int
+  type        TrainingType
+  content     String?
+  file_url    String?
+  tags        Json?
+  approved_by Int?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  business Business @relation(fields: [business_id], references: [id])
+}
+
+model AiHallucinationReport {
+  id          Int  @id @default(autoincrement())
+  email_id    Int
+  reply_id    Int?
+  user_id     Int
+  business_id Int
+
+  issue_type String
+  comment    String?
+  severity   HallucinationSeverity @default(MEDIUM)
+  status     HallucinationStatus   @default(OPEN)
+
+  created_at DateTime  @default(now())
+  fixed_at   DateTime?
+
+  email    Email             @relation(fields: [email_id], references: [id])
+  reply    AiGeneratedReply? @relation(fields: [reply_id], references: [id])
+  user     User              @relation(fields: [user_id], references: [id])
+  business Business          @relation(fields: [business_id], references: [id])
+}
+
+model AiModelSettings {
+  id             Int     @id @default(autoincrement())
+  model_name     String
+  temperature    Float?  @default(0.7)
+  max_tokens     Int?    @default(2048)
+  system_prompt  String?
+  safety_rules   Json?
+  fallback_model String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+///////////////////////////////
+// INTEGRATION
+///////////////////////////////
+model Integration {
+  id                Int             @id @default(autoincrement())
+  business_id       Int
+  type              IntegrationType
+  config_json       Json?
+  last_sync_at      DateTime?
+  auto_sync_enabled Boolean         @default(false)
+
+  business Business @relation(fields: [business_id], references: [id])
+}
+
+///////////////////////////////
+// BILLING SYSTEM
+///////////////////////////////
+model Plan {
+  id          Int     @id @default(autoincrement())
+  name        String
+  price       Float
+  email_limit Int?
+  ai_credits  Int?
+  features    Json?
+  is_active   Boolean @default(true)
+
+  subscriptions Subscription[]
+  payments      PaymentHistory[]
+}
+
+model Subscription {
+  id           Int       @id @default(autoincrement())
+  business_id  Int
+  plan_id      Int
+  status       String    @default("ACTIVE")
+  start_date   DateTime
+  end_date     DateTime?
+  renewal_date DateTime?
+
+  business Business         @relation(fields: [business_id], references: [id])
+  plan     Plan             @relation(fields: [plan_id], references: [id])
+  payments PaymentHistory[]
+}
+
+model PaymentHistory {
+  id              Int  @id @default(autoincrement())
+  business_id     Int
+  plan_id         Int
+  subscription_id Int?
+
+  amount         Float
+  currency       String
+  payment_method String
+  invoice_url    String?
+  status         String
+  created_at     DateTime @default(now())
+
+  business     Business      @relation(fields: [business_id], references: [id])
+  plan         Plan          @relation(fields: [plan_id], references: [id])
+  subscription Subscription? @relation(fields: [subscription_id], references: [id])
 }
