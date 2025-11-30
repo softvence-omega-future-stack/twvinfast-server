@@ -1,254 +1,3 @@
-//  generator client {
-//   provider = "prisma-client-js"
-// }
-
-// datasource db {
-//   provider = "postgresql"
-//   url      = env("DATABASE_URL")
-// }
-
-// ///////////////////////////////
-// // BUSINESS (TENANT)
-// ///////////////////////////////
-// model Business {
-//   id         Int       @id @default(autoincrement())
-//   name       String
-//   email      String?
-//   website    String?
-//   status     String?   @default("ACTIVE")
-//   created_at DateTime  @default(now())
-//   updated_at DateTime  @updatedAt
-
-//   // Relations
-//   users         User[]
-//   mailboxes     Mailbox[]
-//   threads       EmailThread[]
-//   emails        Email[]
-//   customers     Customer[]
-//   opportunities Opportunity[]
-//   integrations  Integration[]
-// }
-
-// ///////////////////////////////
-// // ROLE & USER
-// ///////////////////////////////
-// model Role {
-//   id          Int     @id @default(autoincrement())
-//   name        String  @unique
-//   description String?
-
-//   users       User[]
-// }
-
-// model User {
-//   id                 Int       @id @default(autoincrement())
-//   name               String
-//   email              String    @unique
-//   password_hash      String
-//   status             String?   @default("ACTIVE")
-//   two_factor_enabled Boolean   @default(false)
-//   last_login_at      DateTime?
-//   refreshToken       String?
-//   created_at         DateTime  @default(now())
-//   updated_at         DateTime  @updatedAt
-
-//   // FK
-//   role_id            Int
-//   business_id        Int?
-
-//   // Relations
-//   role               Role      @relation(fields: [role_id], references: [id])
-//   business           Business? @relation(fields: [business_id], references: [id])
-
-//   mailboxes          Mailbox[]
-//   emails             Email[]
-//   aiActions          AIAction[]
-// }
-
-// ///////////////////////////////
-// // MAILBOX
-// ///////////////////////////////
-// model Mailbox {
-//   id            Int       @id @default(autoincrement())
-//   business_id   Int
-//   user_id       Int
-//   provider      String
-//   email_address String
-//   imap_host     String?
-//   imap_port     Int?
-//   smtp_host     String?
-//   smtp_port     Int?
-//   is_ssl        Boolean?  @default(true)
-//   created_at    DateTime  @default(now())
-
-//   business      Business  @relation(fields: [business_id], references: [id])
-//   user          User      @relation(fields: [user_id], references: [id])
-
-//   threads       EmailThread[]
-//   emails        Email[]
-// }
-
-// ///////////////////////////////
-// // EMAIL THREAD (CONVERSATION)
-// ///////////////////////////////
-// model EmailThread {
-//   id              Int        @id @default(autoincrement())
-//   business_id     Int
-//   mailbox_id      Int
-//   customer_id     Int?
-//   subject         String?
-//   last_message_at DateTime?
-//   created_at      DateTime   @default(now())
-//   updated_at      DateTime   @updatedAt
-
-//   business        Business   @relation(fields: [business_id], references: [id])
-//   mailbox         Mailbox    @relation(fields: [mailbox_id], references: [id])
-//   customer        Customer?  @relation(fields: [customer_id], references: [id])
-
-//   emails          Email[]
-// }
-
-// ///////////////////////////////
-// // EMAIL
-// ///////////////////////////////
-// model Email {
-//   id            Int          @id @default(autoincrement())
-//   business_id   Int
-//   mailbox_id    Int
-//   thread_id     Int
-//   user_id       Int?
-
-//   message_id    String?
-//   in_reply_to   String?
-//   from_address  String?
-//   to_addresses  Json?
-//   cc_addresses  Json?
-//   bcc_addresses Json?
-//   subject       String?
-//   body_html     String?
-//   body_text     String?
-//   folder        EmailFolder?
-//   is_read       Boolean?     @default(false)
-//   is_starred    Boolean?     @default(false)
-//   received_at   DateTime?
-//   sent_at       DateTime?
-//   created_at    DateTime     @default(now())
-//   updated_at    DateTime     @updatedAt
-
-//   business      Business     @relation(fields: [business_id], references: [id])
-//   mailbox       Mailbox      @relation(fields: [mailbox_id], references: [id])
-//   thread        EmailThread  @relation(fields: [thread_id], references: [id])
-//   user          User?        @relation(fields: [user_id], references: [id])
-
-//   insight       AIEmailInsight?
-//   aiActions     AIAction[]
-// }
-
-// ///////////////////////////////
-// // CRM: CUSTOMER + OPPORTUNITY
-// ///////////////////////////////
-// model Customer {
-//   id              Int          @id @default(autoincrement())
-//   business_id     Int
-//   name            String
-//   email           String?
-//   phone           String?
-//   status          String?
-//   lead_score      Int?
-//   value_estimate  Float?
-//   last_contact_at DateTime?
-
-//   business        Business      @relation(fields: [business_id], references: [id])
-//   threads         EmailThread[]
-//   opportunities   Opportunity[]
-// }
-
-// model Opportunity {
-//   id              Int              @id @default(autoincrement())
-//   business_id     Int
-//   customer_id     Int
-//   name            String
-//   stage           OpportunityStage
-//   value_amount    Float?
-//   status          String?
-//   created_at      DateTime         @default(now())
-
-//   business        Business         @relation(fields: [business_id], references: [id])
-//   customer        Customer         @relation(fields: [customer_id], references: [id])
-// }
-
-// ///////////////////////////////
-// // AI: INSIGHT + ACTION
-// ///////////////////////////////
-// model AIEmailInsight {
-//   id                Int      @id @default(autoincrement())
-//   email_id          Int      @unique
-//   summary           String?
-//   suggested_actions String?
-//   created_at        DateTime @default(now())
-
-//   email             Email    @relation(fields: [email_id], references: [id])
-// }
-
-// model AIAction {
-//   id            Int          @id @default(autoincrement())
-//   email_id      Int
-//   user_id       Int?
-//   action_type   AIActionType
-//   created_at    DateTime     @default(now())
-
-//   email         Email        @relation(fields: [email_id], references: [id])
-//   user          User?        @relation(fields: [user_id], references: [id])
-// }
-
-// ///////////////////////////////
-// // INTEGRATION
-// ///////////////////////////////
-// model Integration {
-//   id          Int             @id @default(autoincrement())
-//   business_id Int
-//   type        IntegrationType
-//   config_json Json?
-//   last_sync_at DateTime?
-//   auto_sync_enabled Boolean   @default(false)
-
-//   business    Business        @relation(fields: [business_id], references: [id])
-// }
-
-// ///////////////////////////////
-// // ENUMS
-// ///////////////////////////////
-// enum EmailFolder {
-//   INBOX
-//   SENT
-//   DRAFT
-//   TRASH
-//   SPAM
-// }
-
-// enum OpportunityStage {
-//   LEAD
-//   PROPOSAL
-//   NEGOTIATION
-//   CLOSED_WON
-//   CLOSED_LOST
-// }
-
-// enum AIActionType {
-//   SUMMARY
-//   REPLY_DRAFT
-//   SENTIMENT
-//   CLASSIFICATION
-//   FOLLOWUP_SUGGESTION
-// }
-
-// enum IntegrationType {
-//   GOOGLE
-//   OUTLOOK
-//   SMTP
-//   OTHER
-// }
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -261,6 +10,7 @@ datasource db {
 ///////////////////////////////
 // ENUMS
 ///////////////////////////////
+
 enum EmailFolder {
   INBOX
   SENT
@@ -313,6 +63,7 @@ enum HallucinationStatus {
 ///////////////////////////////
 // BUSINESS (TENANT)
 ///////////////////////////////
+
 model Business {
   id         Int      @id @default(autoincrement())
   name       String
@@ -321,6 +72,9 @@ model Business {
   status     String?  @default("ACTIVE")
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+
+  // Stripe Billing
+  stripe_customer_id String?
 
   // Relations
   users         User[]
@@ -336,7 +90,7 @@ model Business {
   aiReplies      AiGeneratedReply[]
   hallucinations AiHallucinationReport[]
 
-  // BILLING
+  // Billing
   subscriptions Subscription[]
   payments      PaymentHistory[]
 }
@@ -344,6 +98,7 @@ model Business {
 ///////////////////////////////
 // ROLE & USER
 ///////////////////////////////
+
 model Role {
   id          Int     @id @default(autoincrement())
   name        String  @unique
@@ -369,58 +124,23 @@ model User {
   business_id Int?
 
   // Relations
-  role        Role       @relation(fields: [role_id], references: [id])
-  business    Business?  @relation(fields: [business_id], references: [id])
+  role     Role      @relation(fields: [role_id], references: [id])
+  business Business? @relation(fields: [business_id], references: [id])
 
-  mailboxes   Mailbox[]
-  emails      Email[]
-  aiActions   AIAction[]
+  // Email-related
+  mailboxes Mailbox[]
+  emails    Email[]
+  aiActions AIAction[]
 
   // AI Back-relations
   aiReplies      AiGeneratedReply[]
   hallucinations AiHallucinationReport[]
-
-  // ----------------------------
-  // Stripe Subscription Fields
-  // ----------------------------
-  subscription_id     String?    // Stripe subscription ID
-  stripe_customer_id         String?    // Stripe customer ID
-  subscription_status String?    // "active", "past_due", "canceled"
 }
-
-
-// model User {
-//   id                 Int       @id @default(autoincrement())
-//   name               String
-//   email              String    @unique
-//   password_hash      String
-//   status             String?   @default("ACTIVE")
-//   two_factor_enabled Boolean   @default(false)
-//   last_login_at      DateTime?
-//   refreshToken       String?
-//   created_at         DateTime  @default(now())
-//   updated_at         DateTime  @updatedAt
-
-//   // FK
-//   role_id     Int
-//   business_id Int?
-
-//   // Relations
-//   role     Role      @relation(fields: [role_id], references: [id])
-//   business Business? @relation(fields: [business_id], references: [id])
-
-//   mailboxes Mailbox[]
-//   emails    Email[]
-//   aiActions AIAction[]
-
-//   // AI Back-relations
-//   aiReplies      AiGeneratedReply[]
-//   hallucinations AiHallucinationReport[]
-// }
 
 ///////////////////////////////
 // MAILBOX
 ///////////////////////////////
+
 model Mailbox {
   id            Int      @id @default(autoincrement())
   business_id   Int
@@ -441,21 +161,10 @@ model Mailbox {
   emails  Email[]
 }
 
-
-
-// 
-// model MailboxAssignedUser {
-//   id         String  @id @default(cuid())
-//   mailboxId  String
-//   userId     String
-
-//   mailbox    Mailbox @relation(fields: [mailboxId], references: [id])
-//   user       User    @relation(fields: [userId], references: [id])
-// }
-
 ///////////////////////////////
 // EMAIL THREAD
 ///////////////////////////////
+
 model EmailThread {
   id              Int       @id @default(autoincrement())
   business_id     Int
@@ -476,6 +185,7 @@ model EmailThread {
 ///////////////////////////////
 // EMAIL
 ///////////////////////////////
+
 model Email {
   id          Int  @id @default(autoincrement())
   business_id Int
@@ -515,6 +225,7 @@ model Email {
 ///////////////////////////////
 // CRM MODELS
 ///////////////////////////////
+
 model Customer {
   id              Int       @id @default(autoincrement())
   business_id     Int
@@ -548,6 +259,7 @@ model Opportunity {
 ///////////////////////////////
 // AI MODELS
 ///////////////////////////////
+
 model AIEmailInsight {
   id                Int      @id @default(autoincrement())
   email_id          Int      @unique
@@ -642,6 +354,7 @@ model AiModelSettings {
 ///////////////////////////////
 // INTEGRATION
 ///////////////////////////////
+
 model Integration {
   id                Int             @id @default(autoincrement())
   business_id       Int
@@ -654,33 +367,59 @@ model Integration {
 }
 
 ///////////////////////////////
-// BILLING SYSTEM
+// BILLING SYSTEM (FINAL & CLEAN)
 ///////////////////////////////
-model Plan {
-  id          Int     @id @default(autoincrement())
-  name        String
-  price       Float
-  email_limit Int?
-  ai_credits  Int?
-  features    Json?
-  is_active   Boolean @default(true)
 
-  subscriptions Subscription[]
-  payments      PaymentHistory[]
+// model Plan {
+//   id              Int     @id @default(autoincrement())
+//   name            String
+//   price           Float
+//   stripe_price_id String? // Stripe Price ID
+//   email_limit     Int?
+//   ai_credits      Int?
+//   features        Json?
+//   is_active       Boolean @default(true)
+
+//   subscriptions Subscription[]
+//   payments      PaymentHistory[]
+// }
+model Plan {
+  id                 Int      @id @default(autoincrement())
+  name               String
+  description        String?
+  price              Float
+  currency           String    @default("usd")
+  interval           String    @default("month") // month | year
+  email_limit        Int?
+  ai_credits         Int?
+  features           Json?
+  is_active          Boolean   @default(true)
+
+  // Stripe
+  stripe_product_id  String?
+  stripe_price_id    String?
+
+  subscriptions      Subscription[]
+  payments           PaymentHistory[]
 }
 
 model Subscription {
-  id           Int       @id @default(autoincrement())
-  business_id  Int
-  plan_id      Int
-  status       String    @default("ACTIVE")
-  start_date   DateTime
-  end_date     DateTime?
-  renewal_date DateTime?
+  id                     Int       @id @default(autoincrement())
+  business_id            Int
+  plan_id                Int
+  status                 String    @default("ACTIVE")
+  start_date             DateTime
+  end_date               DateTime?
+  renewal_date           DateTime?
 
-  business Business         @relation(fields: [business_id], references: [id])
-  plan     Plan             @relation(fields: [plan_id], references: [id])
+  stripe_customer_id     String?
+  stripe_subscription_id String?
+
+  business Business      @relation(fields: [business_id], references: [id])
+  plan     Plan          @relation(fields: [plan_id], references: [id])
   payments PaymentHistory[]
+
+  @@unique([business_id, plan_id], name: "business_id_plan_id")
 }
 
 model PaymentHistory {
@@ -693,8 +432,12 @@ model PaymentHistory {
   currency       String
   payment_method String
   invoice_url    String?
-  status         String
+  status         String // PAID, FAILED, PENDING
   created_at     DateTime @default(now())
+
+  // Stripe references
+  stripe_invoice_id        String?
+  stripe_payment_intent_id String?
 
   business     Business      @relation(fields: [business_id], references: [id])
   plan         Plan          @relation(fields: [plan_id], references: [id])
