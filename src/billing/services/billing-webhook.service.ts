@@ -317,8 +317,15 @@ export class BillingWebhookService {
     }
 
     // Convert Stripe timestamp (seconds) → JS Date (ms)
-    const startDate = new Date(stripeSub.current_period_start * 1000);
-    const endDate = new Date(stripeSub.current_period_end * 1000);
+    // const startDate = new Date(stripeSub.current_period_start * 1000);
+    // const endDate = new Date(stripeSub.current_period_end * 1000);
+    const startDate = stripeSub.current_period_start
+      ? new Date(stripeSub.current_period_start * 1000)
+      : new Date();
+
+    const endDate = stripeSub.current_period_end
+      ? new Date(stripeSub.current_period_end * 1000)
+      : null;
 
     const status: string = String(stripeSub.status || '').toUpperCase(); // ACTIVE, TRIALING, PAST_DUE, CANCELED, etc.
 
@@ -364,7 +371,9 @@ export class BillingWebhookService {
   //    → Mark subscription as CANCELED in DB
   // ------------------------------------------------------------------
   private async handleSubscriptionDeleted(event: Stripe.Event) {
+    // const stripeSub: any = event.data.object as any;
     const stripeSub: any = event.data.object as any;
+
     const metadata = stripeSub.metadata ?? {};
 
     const businessId = metadata.businessId ? Number(metadata.businessId) : null;

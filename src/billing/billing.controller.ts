@@ -1,4 +1,3 @@
-// src/billing/billing.controller.ts
 import {
   BadRequestException,
   Body,
@@ -9,7 +8,7 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { Request } from 'express';
+
 import { BillingService } from './services/billing.service';
 import { BillingWebhookService } from './services/billing-webhook.service';
 import { StripeService } from 'src/stripe/stripe.service';
@@ -24,39 +23,54 @@ export class BillingController {
     private readonly billingWebhookService: BillingWebhookService,
     private readonly stripeService: StripeService,
   ) {}
+
   @Public()
   @Post('checkout')
   async createCheckout(@Body() dto: CreateCheckoutDto) {
     return this.billingService.createCheckout(dto);
   }
 
+  @Public()
   @Post('portal')
   async createPortal(@Body() dto: CreatePortalDto) {
     return this.billingService.createPortal(dto);
   }
 
-  // For UI: /billing/subscription?businessId=1
+  @Public()
   @Get('subscription')
   async getSubscription(@Query('businessId') businessId: string) {
     return this.billingService.getBusinessSubscription(Number(businessId));
   }
 
-  // Stripe webhook (must be PUBLIC)
+  // 🔥 Correct Stripe Webhook
+
   @Public()
   @Post('webhook')
   async webhook(
+    @Req() req: Request,
     @Headers('stripe-signature') signature: string,
-    @Req() req: Request & { rawBody?: Buffer },
   ) {
-    console.log("Hit web hook")
+    console.log('Hit Stripe webhook');
+
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       throw new Error('STRIPE_WEBHOOK_SECRET not configured');
     }
 
-    const rawBody = (req as any).rawBody;
-    if (!rawBody) {
-      throw new BadRequestException('Missing rawBody for Stripe webhook');
+    // 🔥 express.raw() put the raw bytes here:
+    const rawBody = req.body as unknown as Buffer;
+
+    console.log(
+      'Webhook body type:',
+      typeof rawBody,
+      'isBuffer=',
+      Buffer.isBuffer(rawBody),
+    );
+
+    if (!rawBody || !Buffer.isBuffer(rawBody)) {
+      throw new BadRequestException(
+        'Stripe webhook body is not a Buffer (check express.raw setup)',
+      );
     }
 
     let event;
@@ -67,6 +81,7 @@ export class BillingController {
         webhookSecret,
       );
     } catch (err: any) {
+      console.error('Stripe constructWebhookEvent error:', err);
       throw new BadRequestException(
         `Webhook signature verification failed: ${err.message}`,
       );
