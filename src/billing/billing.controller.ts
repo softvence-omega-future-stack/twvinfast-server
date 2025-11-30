@@ -24,7 +24,7 @@ export class BillingController {
     private readonly billingWebhookService: BillingWebhookService,
     private readonly stripeService: StripeService,
   ) {}
-
+  @Public()
   @Post('checkout')
   async createCheckout(@Body() dto: CreateCheckoutDto) {
     return this.billingService.createCheckout(dto);
@@ -48,6 +48,7 @@ export class BillingController {
     @Headers('stripe-signature') signature: string,
     @Req() req: Request & { rawBody?: Buffer },
   ) {
+    console.log("Hit web hook")
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       throw new Error('STRIPE_WEBHOOK_SECRET not configured');
