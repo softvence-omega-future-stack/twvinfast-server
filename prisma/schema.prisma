@@ -369,46 +369,45 @@ model Integration {
 ///////////////////////////////
 // BILLING SYSTEM (FINAL & CLEAN)
 
-
 ///////////////////////////////
 // BILLING SYSTEM (FINAL)
 ///////////////////////////////
 
 model Plan {
-  id                 Int      @id @default(autoincrement())
-  name               String
-  description        String?
-  price              Float
-  currency           String    @default("usd")
-  interval           String    @default("month") // month | year
-  email_limit        Int?
-  ai_credits         Int?
-  features           Json?
-  is_active          Boolean   @default(true)
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  price       Float
+  currency    String  @default("usd")
+  interval    String  @default("month") // month | year
+  email_limit Int?
+  ai_credits  Int?
+  features    Json?
+  is_active   Boolean @default(true)
 
   // Stripe
-  stripe_product_id  String?   // ⭐ UPDATED: required for Stripe product tracking
-  stripe_price_id    String?   // ⭐ REQUIRED for webhooks to map price → plan
+  stripe_product_id String? // ⭐ UPDATED: required for Stripe product tracking
+  stripe_price_id   String? // ⭐ REQUIRED for webhooks to map price → plan
 
-  subscriptions      Subscription[]
-  payments           PaymentHistory[]
+  subscriptions Subscription[]
+  payments      PaymentHistory[]
 }
 
 model Subscription {
-  id                     Int       @id @default(autoincrement())
-  business_id            Int
-  plan_id                Int
-  status                 String    @default("ACTIVE")
-  start_date             DateTime
-  end_date               DateTime?
-  renewal_date           DateTime?
+  id           Int       @id @default(autoincrement())
+  business_id  Int
+  plan_id      Int
+  status       String    @default("ACTIVE")
+  start_date   DateTime?
+  end_date     DateTime?
+  renewal_date DateTime?
 
   // Stripe fields
   stripe_customer_id     String?
   stripe_subscription_id String?
 
-  business Business      @relation(fields: [business_id], references: [id])
-  plan     Plan          @relation(fields: [plan_id], references: [id])
+  business Business         @relation(fields: [business_id], references: [id])
+  plan     Plan             @relation(fields: [plan_id], references: [id])
   payments PaymentHistory[]
 
   // ⭐ UPDATED: MUST use SNAKE_CASE keys

@@ -1,200 +1,488 @@
+// // src/billing/services/billing-webhook.service.ts
 // import { Injectable, Logger } from '@nestjs/common';
 // import { PrismaService } from 'prisma/prisma.service';
+// import { StripeService } from 'src/stripe/stripe.service';
 // import Stripe from 'stripe';
 
 // @Injectable()
 // export class BillingWebhookService {
 //   private readonly logger = new Logger(BillingWebhookService.name);
 
-//   constructor(private readonly prisma: PrismaService) {}
+//   constructor(
+//     private readonly prisma: PrismaService,
+//     private readonly stripeService: StripeService, // ← REQUIRED
+//   ) {}
 
-//   // -----------------------------------------------------------
-//   // Main Event Handler
-//   // -----------------------------------------------------------
+//   // ==============================================================
+//   // MAIN ENTRYPOINT
+//   // ==============================================================
 //   async handleEvent(event: Stripe.Event) {
-//     this.logger.log(`Stripe event received: ${event.type}`);
+//     this.logger.log(`➡️ Stripe Webhook: ${event.type} (${event.id})`);
 
-//     switch (event.type) {
-//       case 'checkout.session.completed':
-//         await this.handleCheckoutCompleted(event);
-//         break;
+//     try {
+//       switch (event.type) {
+//         case 'checkout.session.completed':
+//           return this.checkoutCompleted(event);
 
-//       case 'customer.subscription.created':
-//       case 'customer.subscription.updated':
-//         await this.handleSubscriptionUpdated(event);
-//         break;
+//         case 'customer.subscription.created':
+//         case 'customer.subscription.updated':
+//           return this.subscriptionUpdated(event);
 
-//       case 'customer.subscription.deleted':
-//         await this.handleSubscriptionDeleted(event);
-//         break;
+//         case 'customer.subscription.deleted':
+//           return this.subscriptionDeleted(event);
 
-//       case 'invoice.payment_succeeded':
-//         await this.handleInvoicePaymentSucceeded(event);
-//         break;
+//         case 'invoice.payment_succeeded':
+//           return this.invoicePaymentSucceeded(event);
 
-//       case 'invoice.payment_failed':
-//         await this.handleInvoicePaymentFailed(event);
-//         break;
+//         case 'invoice.payment_failed':
+//           return this.invoicePaymentFailed(event);
 
-//       default:
-//         this.logger.debug(`Unhandled Stripe event type: ${event.type}`);
-//         break;
+//         default:
+//           this.logger.debug(`⚠️ Unhandled event type: ${event.type}`);
+//       }
+//     } catch (error) {
+//       this.logger.error(
+//         `❌ Error handling ${event.type}: ${error?.message}`,
+//         error?.stack,
+//       );
+//       throw error;
 //     }
 //   }
 
-//   // -----------------------------------------------------------
-//   // checkout.session.completed
-//   // -----------------------------------------------------------
-//   private async handleCheckoutCompleted(event: Stripe.Event) {
-//     const session = event.data.object as Stripe.Checkout.Session;
+//   // ==============================================================
+//   // 🔧 HELPERS
+//   // ==============================================================
+//   private getMetadata(obj: any) {
+//     const metadata = obj?.metadata ?? {};
+//     return {
+//       businessId: metadata.businessId ? Number(metadata.businessId) : null,
+//       planId: metadata.planId ? Number(metadata.planId) : null,
+//     };
+//   }
 
-//     const metadata = session.metadata ?? {};
-//     const businessId = Number(metadata.businessId);
-//     const planId = Number(metadata.planId);
+//   private stripeToDate(unix: number | null | undefined) {
+//     return unix ? new Date(unix * 1000) : null;
+//   }
+
+//   private async findSubscriptionByStripeId(stripeSubId: string) {
+//     return this.prisma.subscription.findFirst({
+//       where: { stripe_subscription_id: stripeSubId },
+//     });
+//   }
+
+//   private async findSubscriptionByCustomer(stripeCustomerId: string) {
+//     // If you want to be stricter, you can filter by ACTIVE/INCOMPLETE here
+//     return this.prisma.subscription.findFirst({
+//       where: { stripe_customer_id: stripeCustomerId },
+//       orderBy: { id: 'desc' }, // latest
+//     });
+//   }
+
+//   private async findSubscriptionId(businessId: number, planId: number) {
+//     const sub = await this.prisma.subscription.findUnique({
+//       where: {
+//         business_id_plan_id: { business_id: businessId, plan_id: planId },
+//       },
+//     });
+//     return sub?.id ?? null;
+//   }
+
+//   // ==============================================================
+//   // 1) CHECKOUT COMPLETED
+//   // ==============================================================
+//   private async checkoutCompleted(event: Stripe.Event) {
+//     const session = event.data.object as Stripe.Checkout.Session;
+//     const { businessId, planId } = this.getMetadata(session);
 
 //     if (!businessId || !planId) {
-//       this.logger.warn('Checkout session missing metadata');
+//       this.logger.warn('⚠️ checkout.session.completed missing metadata');
 //       return;
 //     }
 
 //     this.logger.log(
-//       `Checkout.session.completed → business:${businessId} plan:${planId}`,
+//       `✅ Checkout Completed → business=${businessId}, plan=${planId}, session=${session.id}`,
 //     );
 //   }
 
-//   // -----------------------------------------------------------
-//   // customer.subscription.created / updated
-//   // -----------------------------------------------------------
-//   private async handleSubscriptionUpdated(event: Stripe.Event) {
-//     const stripeSub = event.data.object as any; // 👈 make it 'any'
-//     console.log('i am from web hook');
+//   // ==============================================================
+//   // 2) SUBSCRIPTION CREATED/UPDATED
+//   // ==============================================================
 
-//     const metadata = stripeSub.metadata ?? {};
-//     const businessId = Number(metadata.businessId);
-//     const planId = Number(metadata.planId);
+//   private async subscriptionUpdated(event: Stripe.Event) {
+//     const sub: any = event.data.object;
+//     console.log('here is a Sub', sub);
+//     const { businessId, planId } = this.getMetadata(sub);
 
 //     if (!businessId || !planId) {
-//       this.logger.warn('Subscription updated missing metadata');
+//       this.logger.warn('⚠️ Subscription event missing metadata');
 //       return;
 //     }
 
-//     const startDate = new Date(stripeSub.current_period_start * 1000);
-//     const endDate = new Date(stripeSub.current_period_end * 1000);
+//     // const status = String(sub.status).toUpperCase();
 
-//     await this.prisma.subscription.upsert({
+//     // // FIX 1: Stripe always sends `start_date`, use it
+//     // const startDate = this.stripeToDate(sub.start_date);
+
+//     // // FIX 2: Only populated after first payment → ACTIVE status
+//     // const endDate = this.stripeToDate(sub.current_period_end);
+
+//     // created myself
+//     const status = String(sub.status).toUpperCase();
+
+//     // Stripe sends different fields depending on subscription state
+//     const startDate =
+//       this.stripeToDate(sub.current_period_start) ??
+//       this.stripeToDate(sub.billing_cycle_anchor) ??
+//       this.stripeToDate(sub.start_date);
+
+//     let endDate = this.stripeToDate(sub.current_period_end);
+
+//     // If ACTIVE but no end_date yet → Stripe will send it after payment
+//     if (status === 'ACTIVE' && !endDate) {
+//       // Webhook invoice.finalized or payment_succeeded will update this later
+//       endDate = null;
+//     }
+
+//     const updated = await this.prisma.subscription.upsert({
 //       where: {
-//         business_id_plan_id: {
-//           business_id: businessId,
-//           plan_id: planId,
-//         },
+//         business_id_plan_id: { business_id: businessId, plan_id: planId },
 //       },
 //       create: {
 //         business_id: businessId,
 //         plan_id: planId,
-//         status: stripeSub.status.toUpperCase(),
+//         status,
 //         start_date: startDate,
 //         end_date: endDate,
-//         stripe_subscription_id: stripeSub.id,
+//         stripe_subscription_id: sub.id,
 //         stripe_customer_id:
-//           typeof stripeSub.customer === 'string'
-//             ? stripeSub.customer
-//             : (stripeSub.customer?.id ?? null),
+//           typeof sub.customer === 'string'
+//             ? sub.customer
+//             : (sub.customer?.id ?? null),
 //       },
 //       update: {
-//         status: stripeSub.status.toUpperCase(),
+//         status,
+//         start_date: startDate, // IMPORTANT
 //         end_date: endDate,
-//         stripe_subscription_id: stripeSub.id,
-//         stripe_customer_id:
-//           typeof stripeSub.customer === 'string'
-//             ? stripeSub.customer
-//             : (stripeSub.customer?.id ?? null),
-//       },
-//     });
-//   }
-
-//   // -----------------------------------------------------------
-//   // customer.subscription.deleted
-//   // -----------------------------------------------------------
-//   private async handleSubscriptionDeleted(event: Stripe.Event) {
-//     const stripeSub: Stripe.Subscription = event.data.object as any;
-
-//     const metadata = stripeSub.metadata ?? {};
-//     const businessId = Number(metadata.businessId);
-//     const planId = Number(metadata.planId);
-
-//     if (!businessId || !planId) {
-//       this.logger.warn('Subscription deleted missing metadata');
-//       return;
-//     }
-
-//     await this.prisma.subscription.updateMany({
-//       where: {
-//         business_id: businessId,
-//         plan_id: planId,
-//       },
-//       data: {
-//         status: 'CANCELED',
+//         stripe_subscription_id: sub.id,
 //       },
 //     });
 
 //     this.logger.log(
-//       `Subscription canceled → business:${businessId}, plan:${planId}`,
+//       `🔄 Subscription Upserted → business=${businessId}, plan=${planId}, status=${status}, id=${updated.id}`,
 //     );
 //   }
 
-//   // -----------------------------------------------------------
-//   // invoice.payment_succeeded
-//   // -----------------------------------------------------------
-//   private async handleInvoicePaymentSucceeded(event: Stripe.Event) {
-//     const invoice = event.data.object as Stripe.Invoice;
-//     const metadata = invoice.metadata ?? {};
+//   // private async subscriptionUpdated(event: Stripe.Event) {
+//   //   const sub: any = event.data.object;
+//   //   console.log('here is a Sub', sub);
+//   //   const { businessId, planId } = this.getMetadata(sub);
 
-//     const businessId = Number(metadata.businessId);
-//     const planId = Number(metadata.planId);
+//   //   if (!businessId || !planId) {
+//   //     this.logger.warn('⚠️ Subscription event missing metadata');
+//   //     return;
+//   //   }
+
+//   //   const status = String(sub.status).toUpperCase();
+//   //   const startDate = this.stripeToDate(sub.current_period_start);
+//   //   const endDate = this.stripeToDate(sub.current_period_end);
+
+//   //   const updated = await this.prisma.subscription.upsert({
+//   //     where: {
+//   //       business_id_plan_id: { business_id: businessId, plan_id: planId },
+//   //     },
+//   //     create: {
+//   //       business_id: businessId,
+//   //       plan_id: planId,
+//   //       status,
+//   //       start_date: startDate,
+//   //       end_date: endDate,
+//   //       stripe_subscription_id: sub.id,
+//   //       stripe_customer_id:
+//   //         typeof sub.customer === 'string'
+//   //           ? sub.customer
+//   //           : (sub.customer?.id ?? null),
+//   //     },
+//   //     update: {
+//   //       status,
+//   //       end_date: endDate,
+//   //       stripe_subscription_id: sub.id,
+//   //     },
+//   //   });
+
+//   //   this.logger.log(
+//   //     `🔄 Subscription Upserted → business=${businessId}, plan=${planId}, status=${status}, id=${updated.id}`,
+//   //   );
+//   // }
+
+//   // ==============================================================
+//   // 3) SUBSCRIPTION DELETED
+//   // ==============================================================
+//   private async subscriptionDeleted(event: Stripe.Event) {
+//     const sub: any = event.data.object;
+//     const { businessId, planId } = this.getMetadata(sub);
 
 //     if (!businessId || !planId) {
-//       this.logger.warn('Invoice payment succeeded missing metadata');
+//       this.logger.warn('⚠️ Subscription deletion missing metadata');
 //       return;
 //     }
 
-//     // Stripe does not type payment_intent consistently → safe cast
-//     const paymentIntentRaw = (invoice as any).payment_intent;
-//     const paymentIntentId =
-//       typeof paymentIntentRaw === 'string'
-//         ? paymentIntentRaw
-//         : (paymentIntentRaw?.id ?? null);
+//     const result = await this.prisma.subscription.updateMany({
+//       where: { business_id: businessId, plan_id: planId },
+//       data: { status: 'CANCELED' },
+//     });
+
+//     this.logger.log(
+//       `❌ Subscription Canceled → business=${businessId}, plan=${planId}, affected=${result.count}`,
+//     );
+//   }
+
+//   // ==============================================================
+//   // 4) INVOICE PAYMENT SUCCEEDED
+//   private async invoicePaymentSucceeded(event: Stripe.Event) {
+//     const invoice = event.data.object as Stripe.Invoice;
+
+//     let { businessId, planId } = this.getMetadata(invoice);
+
+//     // Fallback: using subscription metadata
+//     if (!businessId || !planId) {
+//       const rawSub = (invoice as any).subscription;
+//       const stripeSubId =
+//         typeof rawSub === 'string' ? rawSub : (rawSub?.id ?? null);
+
+//       if (stripeSubId) {
+//         const sub = await this.findSubscriptionByStripeId(stripeSubId);
+//         if (sub) {
+//           businessId = sub.business_id;
+//           planId = sub.plan_id;
+//           this.logger.log(
+//             `♻️ Metadata Recovered via subscription → business=${businessId}, plan=${planId}`,
+//           );
+//         }
+//       }
+//     }
+
+//     // Fallback: search latest subscription by customer
+//     if (!businessId || !planId) {
+//       const rawCustomer = (invoice as any).customer;
+//       const stripeCustomerId =
+//         typeof rawCustomer === 'string'
+//           ? rawCustomer
+//           : (rawCustomer?.id ?? null);
+
+//       if (stripeCustomerId) {
+//         const sub = await this.findSubscriptionByCustomer(stripeCustomerId);
+//         if (sub) {
+//           businessId = sub.business_id;
+//           planId = sub.plan_id;
+//           this.logger.log(
+//             `♻️ Metadata Recovered via customer → business=${businessId}, plan=${planId}`,
+//           );
+//         }
+//       }
+//     }
+
+//     if (!businessId || !planId) {
+//       this.logger.error('❌ Could not determine metadata for payment');
+//       return;
+//     }
+
+//     // ===============================================
+//     //  EXTRACT PAYMENT INTENT (SAFE, NO TS ERRORS)
+//     // ===============================================
+//     let paymentIntentId: string | null = null;
+
+//     const rawPI = (invoice as any).payment_intent;
+//     if (rawPI) {
+//       paymentIntentId = typeof rawPI === 'string' ? rawPI : (rawPI?.id ?? null);
+//     }
+
+//     // If still missing → extract from charge
+//     if (!paymentIntentId) {
+//       const rawCharge =
+//         (invoice as any).charge ?? (invoice as any).latest_charge;
+
+//       if (rawCharge) {
+//         const chargeId =
+//           typeof rawCharge === 'string' ? rawCharge : rawCharge?.id;
+
+//         if (chargeId) {
+//           try {
+//             const charge = await this.stripeService.retrieveCharge(chargeId);
+
+//             const pi = (charge as any).payment_intent;
+//             paymentIntentId = typeof pi === 'string' ? pi : (pi?.id ?? null);
+//           } catch (e) {
+//             this.logger.error(`❌ Failed to retrieve charge=${chargeId}`);
+//           }
+//         }
+//       }
+//     }
+
+//     if (!paymentIntentId) {
+//       this.logger.warn('⚠️ Could not find payment_intent_id');
+//     }
+
+//     // ===============================================
+//     //  SAVE PAYMENT HISTORY
+//     // ===============================================
+//     const subscriptionId = await this.findSubscriptionId(businessId, planId);
+//     const amountPaid = (invoice.amount_paid ?? 0) / 100;
 
 //     await this.prisma.paymentHistory.create({
 //       data: {
 //         business_id: businessId,
 //         plan_id: planId,
-//         amount: (invoice.amount_paid ?? 0) / 100,
+//         subscription_id: subscriptionId,
+//         amount: amountPaid,
 //         currency: invoice.currency,
 //         payment_method: 'STRIPE',
 //         invoice_url: invoice.hosted_invoice_url ?? '',
 //         status: 'PAID',
 //         stripe_invoice_id: invoice.id,
-//         stripe_payment_intent_id: paymentIntentId,
+//         stripe_payment_intent_id: paymentIntentId, // SAFE
 //       },
 //     });
 
 //     this.logger.log(
-//       `Invoice paid → business:${businessId}, plan:${planId}, amount:${invoice.amount_paid}`,
+//       `💰 Invoice Paid → business=${businessId}, plan=${planId}, paymentIntent=${paymentIntentId}`,
 //     );
 //   }
 
-//   // -----------------------------------------------------------
-//   // invoice.payment_failed
-//   // -----------------------------------------------------------
-//   private async handleInvoicePaymentFailed(event: Stripe.Event) {
-//     const invoice = event.data.object as Stripe.Invoice;
-//     const metadata = invoice.metadata ?? {};
+//   // ==============================================================
+//   // 4) INVOICE PAYMENT SUCCEEDED (FIXED)
+//   // ==============================================================
 
-//     const businessId = Number(metadata.businessId);
-//     const planId = Number(metadata.planId);
+//   // ==============================================================
+//   // private async invoicePaymentSucceeded(event: Stripe.Event) {
+//   //   const invoice = event.data.object as Stripe.Invoice;
+//   //   let { businessId, planId } = this.getMetadata(invoice);
+
+//   //   // --- 1) Try from metadata (ideal for first invoice if you set it) ---
+//   //   if (!businessId || !planId) {
+//   //     // --- 2) Try from invoice.subscription (normal subscription invoices) ---
+//   //     const rawSub = (invoice as any).subscription;
+//   //     const stripeSubId =
+//   //       typeof rawSub === 'string' ? rawSub : (rawSub?.id ?? null);
+
+//   //     if (stripeSubId) {
+//   //       const sub = await this.findSubscriptionByStripeId(stripeSubId);
+//   //       if (sub) {
+//   //         businessId = sub.business_id;
+//   //         planId = sub.plan_id;
+//   //         this.logger.log(
+//   //           `♻️ Metadata Recovered via subscription → business=${businessId}, plan=${planId}`,
+//   //         );
+//   //       }
+//   //     }
+//   //   }
+
+//   //   // --- 3) Final fallback: use customer to find latest subscription ---
+//   //   if (!businessId || !planId) {
+//   //     const rawCustomer = (invoice as any).customer;
+//   //     const stripeCustomerId =
+//   //       typeof rawCustomer === 'string'
+//   //         ? rawCustomer
+//   //         : (rawCustomer?.id ?? null);
+
+//   //     if (!stripeCustomerId) {
+//   //       this.logger.error(
+//   //         '❌ invoice.payment_succeeded: No subscription or customer to infer metadata',
+//   //       );
+//   //       return;
+//   //     }
+
+//   //     const sub = await this.findSubscriptionByCustomer(stripeCustomerId);
+//   //     if (!sub) {
+//   //       this.logger.error(
+//   //         '❌ invoice.payment_succeeded: No subscription found in DB for customer',
+//   //       );
+//   //       return;
+//   //     }
+
+//   //     businessId = sub.business_id;
+//   //     planId = sub.plan_id;
+
+//   //     this.logger.log(
+//   //       `♻️ Metadata Recovered via customer → business=${businessId}, plan=${planId}`,
+//   //     );
+//   //   }
+
+//   //   const paymentIntentRaw = (invoice as any).payment_intent;
+//   //   const paymentIntentId =
+//   //     typeof paymentIntentRaw === 'string'
+//   //       ? paymentIntentRaw
+//   //       : (paymentIntentRaw?.id ?? null);
+
+//   //   const amountPaid = (invoice.amount_paid ?? 0) / 100;
+//   //   const subscriptionId = await this.findSubscriptionId(businessId, planId);
+
+//   //   await this.prisma.paymentHistory.create({
+//   //     data: {
+//   //       business_id: businessId,
+//   //       plan_id: planId,
+//   //       subscription_id: subscriptionId,
+//   //       amount: amountPaid,
+//   //       currency: invoice.currency,
+//   //       payment_method: 'STRIPE',
+//   //       invoice_url: invoice.hosted_invoice_url ?? '',
+//   //       status: 'PAID',
+//   //       stripe_invoice_id: invoice.id,
+//   //       stripe_payment_intent_id: paymentIntentId,
+//   //     },
+//   //   });
+
+//   //   this.logger.log(
+//   //     `💰 Invoice Paid → business=${businessId}, plan=${planId}, amount=${amountPaid}`,
+//   //   );
+//   // }
+
+//   // ==============================================================
+//   // 5) INVOICE PAYMENT FAILED
+//   // ==============================================================
+//   private async invoicePaymentFailed(event: Stripe.Event) {
+//     const invoice = event.data.object as Stripe.Invoice;
+//     let { businessId, planId } = this.getMetadata(invoice);
 
 //     if (!businessId || !planId) {
-//       this.logger.warn('Invoice payment failed missing metadata');
+//       const rawSub = (invoice as any).subscription;
+//       const stripeSubId =
+//         typeof rawSub === 'string' ? rawSub : (rawSub?.id ?? null);
+
+//       if (stripeSubId) {
+//         const sub = await this.findSubscriptionByStripeId(stripeSubId);
+//         if (sub) {
+//           businessId = sub.business_id;
+//           planId = sub.plan_id;
+//           this.logger.log(
+//             `♻️ Metadata Recovered (FAILED) via subscription → business=${businessId}, plan=${planId}`,
+//           );
+//         }
+//       }
+//     }
+
+//     if (!businessId || !planId) {
+//       const rawCustomer = (invoice as any).customer;
+//       const stripeCustomerId =
+//         typeof rawCustomer === 'string'
+//           ? rawCustomer
+//           : (rawCustomer?.id ?? null);
+
+//       if (stripeCustomerId) {
+//         const sub = await this.findSubscriptionByCustomer(stripeCustomerId);
+//         if (sub) {
+//           businessId = sub.business_id;
+//           planId = sub.plan_id;
+//           this.logger.log(
+//             `♻️ Metadata Recovered (FAILED) via customer → business=${businessId}, plan=${planId}`,
+//           );
+//         }
+//       }
+//     }
+
+//     if (!businessId || !planId) {
+//       this.logger.error(
+//         '❌ invoice.payment_failed: Could not resolve business/plan',
+//       );
 //       return;
 //     }
 
@@ -204,14 +492,18 @@
 //         ? paymentIntentRaw
 //         : (paymentIntentRaw?.id ?? null);
 
+//     const amountDue = (invoice.amount_due ?? 0) / 100;
+//     const subscriptionId = await this.findSubscriptionId(businessId, planId);
+
 //     await this.prisma.paymentHistory.create({
 //       data: {
 //         business_id: businessId,
 //         plan_id: planId,
-//         amount: (invoice.amount_due ?? 0) / 100,
+//         subscription_id: subscriptionId,
+//         amount: amountDue,
 //         currency: invoice.currency,
-//         payment_method: 'STRIPE',
 //         invoice_url: invoice.hosted_invoice_url ?? '',
+//         payment_method: 'STRIPE',
 //         status: 'FAILED',
 //         stripe_invoice_id: invoice.id,
 //         stripe_payment_intent_id: paymentIntentId,
@@ -219,7 +511,7 @@
 //     });
 
 //     this.logger.log(
-//       `Invoice failed → business:${businessId}, plan:${planId}, amount:${invoice.amount_due}`,
+//       `⚠️ Invoice FAILED → business=${businessId}, plan=${planId}, amount=${amountDue}`,
 //     );
 //   }
 // }
@@ -235,108 +527,119 @@ export class BillingWebhookService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // Main entrypoint – called from your controller
+  // ==============================================================
+  // MAIN ENTRY
+  // ==============================================================
   async handleEvent(event: Stripe.Event) {
-    this.logger.log(`Stripe webhook: ${event.type} (${event.id})`);
+    this.logger.log(`➡️ Stripe Webhook: ${event.type} (${event.id})`);
 
     try {
       switch (event.type) {
         case 'checkout.session.completed':
-          await this.handleCheckoutCompleted(event);
-          break;
+          return this.checkoutCompleted(event);
 
         case 'customer.subscription.created':
         case 'customer.subscription.updated':
-          await this.handleSubscriptionUpdated(event);
-          break;
+          return this.subscriptionUpdated(event);
 
         case 'customer.subscription.deleted':
-          await this.handleSubscriptionDeleted(event);
-          break;
+          return this.subscriptionDeleted(event);
 
         case 'invoice.payment_succeeded':
-          await this.handleInvoicePaymentSucceeded(event);
-          break;
+          return this.invoicePaymentSucceeded(event);
 
         case 'invoice.payment_failed':
-          await this.handleInvoicePaymentFailed(event);
-          break;
+          return this.invoicePaymentFailed(event);
 
         default:
-          this.logger.debug(`Unhandled Stripe event type: ${event.type}`);
+          this.logger.debug(`⚠️ Unhandled event type: ${event.type}`);
       }
     } catch (err) {
       this.logger.error(
-        `Error handling Stripe event ${event.type} (${event.id}): ${err?.message}`,
+        `❌ Error handling ${event.type}: ${err?.message}`,
         err?.stack,
       );
-      throw err;
     }
   }
 
-  // ------------------------------------------------------------------
-  // 1) checkout.session.completed  (just logging / sanity check)
-  // ------------------------------------------------------------------
-  private async handleCheckoutCompleted(event: Stripe.Event) {
-    const session = event.data.object as Stripe.Checkout.Session;
+  // ==============================================================
+  // HELPERS
+  // ==============================================================
 
-    const metadata = session.metadata ?? {};
-    const businessId = metadata.businessId ? Number(metadata.businessId) : null;
-    const planId = metadata.planId ? Number(metadata.planId) : null;
+  private getMetadata(obj: any) {
+    const m = obj?.metadata ?? {};
+    return {
+      businessId: m.businessId ? Number(m.businessId) : null,
+      planId: m.planId ? Number(m.planId) : null,
+    };
+  }
+
+  private stripeToDate(unix: number | null | undefined) {
+    return unix ? new Date(unix * 1000) : null;
+  }
+
+  private async findSubscriptionByStripeId(id: string) {
+    return this.prisma.subscription.findFirst({
+      where: { stripe_subscription_id: id },
+    });
+  }
+
+  private async findSubscriptionByCustomer(id: string) {
+    return this.prisma.subscription.findFirst({
+      where: { stripe_customer_id: id },
+      orderBy: { id: 'desc' },
+    });
+  }
+
+  private async findSubscriptionId(businessId: number, planId: number) {
+    const sub = await this.prisma.subscription.findUnique({
+      where: {
+        business_id_plan_id: { business_id: businessId, plan_id: planId },
+      },
+    });
+    return sub?.id ?? null;
+  }
+
+  // ==============================================================
+  // 1) CHECKOUT SESSION COMPLETE
+  // ==============================================================
+
+  private async checkoutCompleted(event: Stripe.Event) {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const { businessId, planId } = this.getMetadata(session);
 
     if (!businessId || !planId) {
-      this.logger.warn(
-        'checkout.session.completed received without businessId/planId metadata',
-      );
+      this.logger.warn('⚠️ Checkout session missing metadata');
       return;
     }
 
     this.logger.log(
-      `Checkout completed for business=${businessId}, plan=${planId}, session=${session.id}`,
+      `✅ Checkout Completed → business=${businessId}, plan=${planId}`,
     );
-    // Subscription creation itself is handled by customer.subscription.created/updated
   }
 
-  // ------------------------------------------------------------------
-  // 2) customer.subscription.created / updated
-  //    → Upsert Subscription row in DB
-  // ------------------------------------------------------------------
-  private async handleSubscriptionUpdated(event: Stripe.Event) {
-    // Use "any" so TS doesn't complain about current_period_start / end
-    const stripeSub: any = event.data.object as any;
-    const metadata = stripeSub.metadata ?? {};
+  // ==============================================================
+  // 2) SUBSCRIPTION CREATED/UPDATED
+  // ==============================================================
 
-    const businessId = metadata.businessId ? Number(metadata.businessId) : null;
-    const planId = metadata.planId ? Number(metadata.planId) : null;
+  private async subscriptionUpdated(event: Stripe.Event) {
+    const sub = event.data.object as any;
 
+    const { businessId, planId } = this.getMetadata(sub);
     if (!businessId || !planId) {
-      this.logger.warn(
-        'customer.subscription.* missing metadata businessId/planId',
-      );
+      this.logger.warn('⚠️ Subscription event missing metadata');
       return;
     }
 
-    // Convert Stripe timestamp (seconds) → JS Date (ms)
-    // const startDate = new Date(stripeSub.current_period_start * 1000);
-    // const endDate = new Date(stripeSub.current_period_end * 1000);
-    const startDate = stripeSub.current_period_start
-      ? new Date(stripeSub.current_period_start * 1000)
-      : new Date();
+    const status = String(sub.status).toUpperCase();
 
-    const endDate = stripeSub.current_period_end
-      ? new Date(stripeSub.current_period_end * 1000)
-      : null;
+    // Stripe sometimes sends null for start/end BEFORE invoice payment.
+    const startDate = this.stripeToDate(sub.current_period_start);
+    const endDate = this.stripeToDate(sub.current_period_end);
 
-    const status: string = String(stripeSub.status || '').toUpperCase(); // ACTIVE, TRIALING, PAST_DUE, CANCELED, etc.
-
-    // ⚠️ Requires this in Prisma:
-    // @@unique([business_id, plan_id], name: "business_id_plan_id")
-    const subscription = await this.prisma.subscription.upsert({
+    const updated = await this.prisma.subscription.upsert({
       where: {
-        business_id_plan_id: {
-          business_id: businessId,
-          plan_id: planId,
-        },
+        business_id_plan_id: { business_id: businessId, plan_id: planId },
       },
       create: {
         business_id: businessId,
@@ -344,162 +647,182 @@ export class BillingWebhookService {
         status,
         start_date: startDate,
         end_date: endDate,
-        stripe_subscription_id: stripeSub.id,
+        stripe_subscription_id: sub.id,
         stripe_customer_id:
-          typeof stripeSub.customer === 'string'
-            ? stripeSub.customer
-            : (stripeSub.customer?.id ?? null),
+          typeof sub.customer === 'string'
+            ? sub.customer
+            : (sub.customer?.id ?? null),
       },
       update: {
         status,
         end_date: endDate,
-        stripe_subscription_id: stripeSub.id,
-        stripe_customer_id:
-          typeof stripeSub.customer === 'string'
-            ? stripeSub.customer
-            : (stripeSub.customer?.id ?? null),
+        stripe_subscription_id: sub.id,
       },
     });
 
     this.logger.log(
-      `Subscription upserted: business=${businessId}, plan=${planId}, status=${status}, subId=${subscription.id}`,
+      `🔄 Subscription Upserted → business=${businessId}, plan=${planId}, status=${status}`,
     );
   }
 
-  // ------------------------------------------------------------------
-  // 3) customer.subscription.deleted
-  //    → Mark subscription as CANCELED in DB
-  // ------------------------------------------------------------------
-  private async handleSubscriptionDeleted(event: Stripe.Event) {
-    // const stripeSub: any = event.data.object as any;
-    const stripeSub: any = event.data.object as any;
+  // ==============================================================
+  // 3) SUBSCRIPTION DELETED
+  // ==============================================================
 
-    const metadata = stripeSub.metadata ?? {};
+  private async subscriptionDeleted(event: Stripe.Event) {
+    const sub = event.data.object as any;
+    const { businessId, planId } = this.getMetadata(sub);
 
-    const businessId = metadata.businessId ? Number(metadata.businessId) : null;
-    const planId = metadata.planId ? Number(metadata.planId) : null;
+    if (!businessId || !planId) return;
 
-    if (!businessId || !planId) {
-      this.logger.warn(
-        'customer.subscription.deleted missing metadata businessId/planId',
-      );
-      return;
-    }
-
-    const result = await this.prisma.subscription.updateMany({
-      where: {
-        business_id: businessId,
-        plan_id: planId,
-      },
-      data: {
-        status: 'CANCELED',
-      },
+    await this.prisma.subscription.updateMany({
+      where: { business_id: businessId, plan_id: planId },
+      data: { status: 'CANCELED' },
     });
 
     this.logger.log(
-      `Subscription canceled in DB: business=${businessId}, plan=${planId}, affected=${result.count}`,
+      `❌ Subscription Cancelled → business=${businessId}, plan=${planId}`,
     );
   }
 
-  // ------------------------------------------------------------------
-  // 4) invoice.payment_succeeded
-  //    → Create PaymentHistory row (status = PAID)
-  // ------------------------------------------------------------------
-  private async handleInvoicePaymentSucceeded(event: Stripe.Event) {
+  // ==============================================================
+  // 4) INVOICE PAYMENT SUCCEEDED
+  // ==============================================================
+
+  private async invoicePaymentSucceeded(event: Stripe.Event) {
     const invoice = event.data.object as Stripe.Invoice;
-    const metadata = invoice.metadata ?? {};
 
-    let businessId = metadata.businessId ? Number(metadata.businessId) : null;
-    let planId = metadata.planId ? Number(metadata.planId) : null;
+    let { businessId, planId } = this.getMetadata(invoice);
+
+    // ------------------ METADATA RECOVERY ------------------
+    if (!businessId || !planId) {
+      // ----- Subscription from invoice -----
+      const rawSub: any = (invoice as any).subscription;
+      const stripeSubId =
+        typeof rawSub === 'string' ? rawSub : (rawSub?.id ?? null);
+
+      if (stripeSubId) {
+        const sub = await this.findSubscriptionByStripeId(stripeSubId);
+        if (sub) {
+          businessId = sub.business_id;
+          planId = sub.plan_id;
+          this.logger.log(`♻ Metadata recovered via subscription`);
+        }
+      }
+    }
 
     if (!businessId || !planId) {
-      this.logger.warn(
-        'invoice.payment_succeeded missing businessId/planId metadata',
-      );
+      const rawCustomer = invoice.customer as any;
+      const stripeCustomerId =
+        typeof rawCustomer === 'string' ? rawCustomer : rawCustomer?.id;
+
+      if (stripeCustomerId) {
+        const sub = await this.findSubscriptionByCustomer(stripeCustomerId);
+        if (sub) {
+          businessId = sub.business_id;
+          planId = sub.plan_id;
+          this.logger.log(`♻ Metadata recovered via customer`);
+        }
+      }
+    }
+
+    if (!businessId || !planId) {
+      this.logger.error('❌ Could not resolve business/plan from invoice');
       return;
     }
 
-    // Stripe typings for payment_intent are messy → use any
-    const paymentIntentRaw = (invoice as any).payment_intent as
-      | string
-      | Stripe.PaymentIntent
-      | null
-      | undefined;
-
+    // ------------------ PAYMENT INTENT FIX ------------------
+    // ----- Payment Intent -----
+    const rawIntent: any = (invoice as any).payment_intent;
     const paymentIntentId =
-      typeof paymentIntentRaw === 'string'
-        ? paymentIntentRaw
-        : (paymentIntentRaw?.id ?? null);
+      typeof rawIntent === 'string' ? rawIntent : (rawIntent?.id ?? null);
+    // ------------------ BILLING DATES (ALWAYS AVAILABLE HERE) ------------------
+    const line = invoice.lines?.data?.[0];
+    const startDate = line?.period?.start
+      ? new Date(line.period.start * 1000)
+      : undefined;
+    const endDate = line?.period?.end
+      ? new Date(line.period.end * 1000)
+      : undefined;
 
-    const amountPaid = (invoice.amount_paid ?? 0) / 100;
+    // ------------------ UPDATE SUBSCRIPTION ------------------
+    await this.prisma.subscription.updateMany({
+      where: { business_id: businessId, plan_id: planId },
+      data: {
+        status: 'ACTIVE',
+        start_date: startDate,
+        end_date: endDate,
+      },
+    });
+
+    // ------------------ SAVE PAYMENT HISTORY ------------------
+    const subscriptionId = await this.findSubscriptionId(businessId, planId);
 
     await this.prisma.paymentHistory.create({
       data: {
         business_id: businessId,
         plan_id: planId,
-        // subscription_id: can be set if you want, using lookup
-        amount: amountPaid,
+        subscription_id: subscriptionId,
+        amount: (invoice.amount_paid ?? 0) / 100,
         currency: invoice.currency,
+        status: 'PAID',
         payment_method: 'STRIPE',
         invoice_url: invoice.hosted_invoice_url ?? '',
-        status: 'PAID',
         stripe_invoice_id: invoice.id,
         stripe_payment_intent_id: paymentIntentId,
       },
     });
 
-    this.logger.log(
-      `Invoice payment succeeded: business=${businessId}, plan=${planId}, amount=${amountPaid}, invoice=${invoice.id}`,
-    );
+    this.logger.log(`💰 Invoice PAID → business=${businessId}, plan=${planId}`);
   }
 
-  // ------------------------------------------------------------------
-  // 5) invoice.payment_failed
-  //    → Create PaymentHistory row (status = FAILED)
-  // ------------------------------------------------------------------
-  private async handleInvoicePaymentFailed(event: Stripe.Event) {
-    const invoice = event.data.object as Stripe.Invoice;
-    const metadata = invoice.metadata ?? {};
+  // ==============================================================
+  // 5) PAYMENT FAILED
+  // ==============================================================
 
-    const businessId = metadata.businessId ? Number(metadata.businessId) : null;
-    const planId = metadata.planId ? Number(metadata.planId) : null;
+  private async invoicePaymentFailed(event: Stripe.Event) {
+    const invoice = event.data.object as Stripe.Invoice;
+
+    let { businessId, planId } = this.getMetadata(invoice);
 
     if (!businessId || !planId) {
-      this.logger.warn(
-        'invoice.payment_failed missing businessId/planId metadata',
-      );
-      return;
+      const rawSub: any = (invoice as any).subscription;
+      const id = typeof rawSub === 'string' ? rawSub : (rawSub?.id ?? null);
+
+      if (id) {
+        const sub = await this.findSubscriptionByStripeId(id);
+        if (sub) {
+          businessId = sub.business_id;
+          planId = sub.plan_id;
+        }
+      }
     }
 
-    const paymentIntentRaw = (invoice as any).payment_intent as
-      | string
-      | Stripe.PaymentIntent
-      | null
-      | undefined;
+    if (!businessId || !planId) return;
 
+    const rawIntent: any = (invoice as any).payment_intent;
     const paymentIntentId =
-      typeof paymentIntentRaw === 'string'
-        ? paymentIntentRaw
-        : (paymentIntentRaw?.id ?? null);
+      typeof rawIntent === 'string' ? rawIntent : (rawIntent?.id ?? null);
 
-    const amountDue = (invoice.amount_due ?? 0) / 100;
+    const subscriptionId = await this.findSubscriptionId(businessId, planId);
 
     await this.prisma.paymentHistory.create({
       data: {
         business_id: businessId,
         plan_id: planId,
-        amount: amountDue,
+        subscription_id: subscriptionId,
+        amount: (invoice.amount_due ?? 0) / 100,
         currency: invoice.currency,
-        payment_method: 'STRIPE',
         invoice_url: invoice.hosted_invoice_url ?? '',
         status: 'FAILED',
+        payment_method: 'STRIPE',
         stripe_invoice_id: invoice.id,
         stripe_payment_intent_id: paymentIntentId,
       },
     });
 
     this.logger.log(
-      `Invoice payment failed: business=${businessId}, plan=${planId}, amount=${amountDue}, invoice=${invoice.id}`,
+      `⚠ Invoice FAILED → business=${businessId}, plan=${planId}`,
     );
   }
 }

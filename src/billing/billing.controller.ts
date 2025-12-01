@@ -35,7 +35,7 @@ export class BillingController {
   async createPortal(@Body() dto: CreatePortalDto) {
     return this.billingService.createPortal(dto);
   }
-
+  kj;
   @Public()
   @Get('subscription')
   async getSubscription(@Query('businessId') businessId: string) {

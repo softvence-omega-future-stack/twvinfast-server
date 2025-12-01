@@ -23,7 +23,6 @@ export class BillingService {
     const business = await this.prisma.business.findUnique({
       where: { id: businessId },
     });
-
     if (!business) {
       throw new NotFoundException('Business not found');
     }
@@ -32,7 +31,6 @@ export class BillingService {
     const plan = await this.prisma.plan.findUnique({
       where: { id: planId },
     });
-
     if (!plan) {
       throw new NotFoundException('Plan not found');
     }
@@ -48,25 +46,32 @@ export class BillingService {
 
       stripeCustomerId = customer.id;
 
-      // Save stripe_customer_id in Business
       await this.prisma.business.update({
         where: { id: businessId },
-        data: {
-          stripe_customer_id: customer.id,
-        },
+        data: { stripe_customer_id: customer.id },
       });
     }
 
-    // 4. Checkout session URLs
+    // 4. Checkout redirect URLs
     const successUrl = `${process.env.CLIENT_URL}/billing/success?businessId=${businessId}`;
     const cancelUrl = `${process.env.CLIENT_URL}/billing/cancel`;
 
     // 5. Create checkout session
     const session = await this.stripeService.createCheckoutSession({
-      priceId,
+      priceId: priceId ?? (plan.stripe_price_id as string),
       customerId: stripeCustomerId,
       successUrl,
       cancelUrl,
+
+      // ✅ subscription-level metadata → will be available on subscription & invoices
+      subscription_data: {
+        metadata: {
+          businessId: String(businessId),
+          planId: String(planId),
+        },
+      },
+
+      // optional checkout-level metadata
       metadata: {
         businessId: String(businessId),
         planId: String(planId),
@@ -92,12 +97,19 @@ export class BillingService {
   /**
    * Get current active subscription for UI.
    */
-  async getBusinessSubscription(businessId: number) {
-    const subscription = await this.prisma.subscription.findFirst({
+  async getBusinessSubscription(businessId: any) {
+    const IntBusinessId = Number(businessId);
+
+    if (!IntBusinessId || isNaN(IntBusinessId)) {
+      console.error('❌ Invalid businessId received:', businessId);
+      throw new Error('Invalid businessId');
+    }
+
+    const subscription = await this.prisma.subscription.findMany({
       where: {
-        business_id: businessId,
+        business_id: IntBusinessId,
         status: {
-          in: ['ACTIVE', 'TRIALING', 'PAST_DUE'],
+          in: ['ACTIVE', 'TRIALING', 'INCOMPLETE'],
         },
       },
       include: {
