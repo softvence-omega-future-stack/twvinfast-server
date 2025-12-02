@@ -9,6 +9,9 @@ import { CompanyModule } from './company/company.module';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
 import { StripeModule } from './stripe/stripe.module';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from './auth/strategies/jwt-auth.guard';
+import { RolesGuard } from './auth/strategies/roles.guard';
 
 @Module({
   imports: [
@@ -22,6 +25,16 @@ import { StripeModule } from './stripe/stripe.module';
     StripeModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
 })
 export class AppModule {}

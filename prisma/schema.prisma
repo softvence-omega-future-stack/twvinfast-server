@@ -225,6 +225,9 @@ model Email {
 ///////////////////////////////
 // CRM MODELS
 ///////////////////////////////
+///////////////////////////////
+// CRM MODELS
+///////////////////////////////
 
 model Customer {
   id              Int       @id @default(autoincrement())
@@ -232,14 +235,33 @@ model Customer {
   name            String
   email           String?
   phone           String?
-  status          String?
-  lead_score      Int?
-  value_estimate  Float?
+
+  // CRM fields
+  status          String?        // LEAD | CLIENT | INACTIVE | CHURNED etc.
+  lead_score      Int?           // 0–100 (AI score)
+  value_estimate  Float?         // total estimated deal value
+
+  // Activity
   last_contact_at DateTime?
+
+  // Extra (AI + CRM friendly)
+  source             String?     // "SUBSCRIPTION", "INBOUND_EMAIL", "IMPORT", etc.
+  company            String?
+  notes              String?
+  preferred_language String?     // "en", "bn", etc.
+  tags               Json?       // e.g. ["premium","hot","returning"]
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   business      Business      @relation(fields: [business_id], references: [id])
   threads       EmailThread[]
   opportunities Opportunity[]
+
+  // Optional but very useful for lookup
+  @@index([business_id])
+  @@index([email])
+  @@unique([business_id, email], name: "business_email_unique")
 }
 
 model Opportunity {
@@ -255,6 +277,36 @@ model Opportunity {
   business Business @relation(fields: [business_id], references: [id])
   customer Customer @relation(fields: [customer_id], references: [id])
 }
+
+// model Customer {
+//   id              Int       @id @default(autoincrement())
+//   business_id     Int
+//   name            String
+//   email           String?
+//   phone           String?
+//   status          String?
+//   lead_score      Int?
+//   value_estimate  Float?
+//   last_contact_at DateTime?
+
+//   business      Business      @relation(fields: [business_id], references: [id])
+//   threads       EmailThread[]
+//   opportunities Opportunity[]
+// }
+
+// model Opportunity {
+//   id           Int              @id @default(autoincrement())
+//   business_id  Int
+//   customer_id  Int
+//   name         String
+//   stage        OpportunityStage
+//   value_amount Float?
+//   status       String?
+//   created_at   DateTime         @default(now())
+
+//   business Business @relation(fields: [business_id], references: [id])
+//   customer Customer @relation(fields: [customer_id], references: [id])
+// }
 
 ///////////////////////////////
 // AI MODELS
@@ -440,78 +492,3 @@ model PaymentHistory {
   @@index([plan_id])
 }
 
-///////////////////////////////
-
-// model Plan {
-//   id              Int     @id @default(autoincrement())
-//   name            String
-//   price           Float
-//   stripe_price_id String? // Stripe Price ID
-//   email_limit     Int?
-//   ai_credits      Int?
-//   features        Json?
-//   is_active       Boolean @default(true)
-
-//   subscriptions Subscription[]
-//   payments      PaymentHistory[]
-// }
-// model Plan {
-//   id                 Int      @id @default(autoincrement())
-//   name               String
-//   description        String?
-//   price              Float
-//   currency           String    @default("usd")
-//   interval           String    @default("month") // month | year
-//   email_limit        Int?
-//   ai_credits         Int?
-//   features           Json?
-//   is_active          Boolean   @default(true)
-
-//   // Stripe
-//   stripe_product_id  String?
-//   stripe_price_id    String?
-
-//   subscriptions      Subscription[]
-//   payments           PaymentHistory[]
-// }
-
-// model Subscription {
-//   id                     Int       @id @default(autoincrement())
-//   business_id            Int
-//   plan_id                Int
-//   status                 String    @default("ACTIVE")
-//   start_date             DateTime
-//   end_date               DateTime?
-//   renewal_date           DateTime?
-
-//   stripe_customer_id     String?
-//   stripe_subscription_id String?
-
-//   business Business      @relation(fields: [business_id], references: [id])
-//   plan     Plan          @relation(fields: [plan_id], references: [id])
-//   payments PaymentHistory[]
-
-//   @@unique([business_id, plan_id], name: "business_id_plan_id")
-// }
-
-// model PaymentHistory {
-//   id              Int  @id @default(autoincrement())
-//   business_id     Int
-//   plan_id         Int
-//   subscription_id Int?
-
-//   amount         Float
-//   currency       String
-//   payment_method String
-//   invoice_url    String?
-//   status         String // PAID, FAILED, PENDING
-//   created_at     DateTime @default(now())
-
-//   // Stripe references
-//   stripe_invoice_id        String?
-//   stripe_payment_intent_id String?
-
-//   business     Business      @relation(fields: [business_id], references: [id])
-//   plan         Plan          @relation(fields: [plan_id], references: [id])
-//   subscription Subscription? @relation(fields: [subscription_id], references: [id])
-// }

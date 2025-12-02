@@ -11,20 +11,23 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
-  canActivate(ctx: ExecutionContext): boolean {
+  canActivate(context: ExecutionContext): boolean {
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(
       ROLES_KEY,
-      [ctx.getHandler(), ctx.getClass()],
+      [context.getHandler(), context.getClass()],
     );
 
     if (!requiredRoles) return true;
 
-    const { user } = ctx.switchToHttp().getRequest();
+    const { user } = context.switchToHttp().getRequest();
+
     if (!user || !user.role) {
-      throw new ForbiddenException('No role assigned');
+      throw new ForbiddenException('User has no assigned role');
     }
 
-    if (!requiredRoles.includes(user.role.name)) {
+    const role = user.role; // 'ADMIN' / 'SUPER_ADMIN'
+
+    if (!requiredRoles.includes(role)) {
       throw new ForbiddenException('Access denied');
     }
 

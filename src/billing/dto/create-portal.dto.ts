@@ -1,8 +1,14 @@
-// src/billing/dto/create-portal.dto.ts
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsString, IsUrl } from 'class-validator';
 
 export class CreatePortalDto {
-  @IsString()
   @IsNotEmpty()
-  stripeCustomerId: string;
+  @IsString()
+  @IsUrl()
+  returnUrl: string;
+}
+
+export class CreateCheckoutDto {
+  @IsNotEmpty()
+  @IsInt()
+  planId: number;
 }

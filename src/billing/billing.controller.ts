@@ -1,3 +1,4 @@
+// src/billing/billing.controller.ts
 import {
   BadRequestException,
   Body,
@@ -5,16 +6,18 @@ import {
   Get,
   Headers,
   Post,
-  Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 
 import { BillingService } from './services/billing.service';
 import { BillingWebhookService } from './services/billing-webhook.service';
 import { StripeService } from 'src/stripe/stripe.service';
-import { CreateCheckoutDto } from './dto/create-checkout.dto';
-import { CreatePortalDto } from './dto/create-portal.dto';
+
 import { Public } from 'src/auth/decorators/public.decorator';
+import { AuthGuard } from '@nestjs/passport';
+import { CreateCheckoutDto, CreatePortalDto } from './dto/create-portal.dto';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('billing')
 export class BillingController {
@@ -24,53 +27,52 @@ export class BillingController {
     private readonly stripeService: StripeService,
   ) {}
 
-  @Public()
+  // ------------------------------------------------------------
+  // ADMIN → Create Checkout Session
+  // ------------------------------------------------------------
   @Post('checkout')
-  async createCheckout(@Body() dto: CreateCheckoutDto) {
-    return this.billingService.createCheckout(dto);
+  @UseGuards(AuthGuard('jwt'))
+  @Roles('ADMIN')
+  async createCheckout(@Req() req, @Body() dto: CreateCheckoutDto) {
+    return this.billingService.createCheckoutSession(req.user.sub, dto.planId);
   }
 
-  @Public()
+  // ------------------------------------------------------------
+  // Billing Portal
+  // ------------------------------------------------------------
   @Post('portal')
-  async createPortal(@Body() dto: CreatePortalDto) {
-    return this.billingService.createPortal(dto);
+  @UseGuards(AuthGuard('jwt'))
+  @Roles('ADMIN')
+  async createPortal(@Req() req, @Body() dto: CreatePortalDto) {
+    return this.billingService.createPortal(req.user.sub, dto);
   }
-  kj;
-  @Public()
+
+  // ------------------------------------------------------------
+  // Business Subscription List
+  // ------------------------------------------------------------
   @Get('subscription')
-  async getSubscription(@Query('businessId') businessId: string) {
-    return this.billingService.getBusinessSubscription(Number(businessId));
+  @UseGuards(AuthGuard('jwt'))
+  @Roles('ADMIN')
+  async getSubscription(@Req() req) {
+    return this.billingService.getBusinessSubscription(req.user.business_id);
   }
 
-  // 🔥 Correct Stripe Webhook
-
+  // ------------------------------------------------------------
+  // Stripe Webhook (Raw Body Required)
+  // ------------------------------------------------------------
   @Public()
   @Post('webhook')
   async webhook(
-    @Req() req: Request,
+    @Req() req: any,
     @Headers('stripe-signature') signature: string,
   ) {
-    console.log('Hit Stripe webhook');
-
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      throw new Error('STRIPE_WEBHOOK_SECRET not configured');
-    }
+    if (!webhookSecret) throw new Error('Missing STRIPE_WEBHOOK_SECRET');
 
-    // 🔥 express.raw() put the raw bytes here:
-    const rawBody = req.body as unknown as Buffer;
-
-    console.log(
-      'Webhook body type:',
-      typeof rawBody,
-      'isBuffer=',
-      Buffer.isBuffer(rawBody),
-    );
+    const rawBody = req.body as Buffer;
 
     if (!rawBody || !Buffer.isBuffer(rawBody)) {
-      throw new BadRequestException(
-        'Stripe webhook body is not a Buffer (check express.raw setup)',
-      );
+      throw new BadRequestException('Webhook body MUST be raw Buffer');
     }
 
     let event;
@@ -81,7 +83,6 @@ export class BillingController {
         webhookSecret,
       );
     } catch (err: any) {
-      console.error('Stripe constructWebhookEvent error:', err);
       throw new BadRequestException(
         `Webhook signature verification failed: ${err.message}`,
       );

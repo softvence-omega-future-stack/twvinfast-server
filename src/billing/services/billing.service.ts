@@ -1,122 +1,101 @@
 // src/billing/services/billing.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
+import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
-import { StripeService } from 'src/stripe/stripe.service';
-import { CreateCheckoutDto } from '../dto/create-checkout.dto';
 import { CreatePortalDto } from '../dto/create-portal.dto';
 
 @Injectable()
 export class BillingService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly stripeService: StripeService,
-  ) {}
+  private stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+    apiVersion: '2023-10-16' as any,
+  });
 
-  /**
-   * Create a Stripe checkout session for subscription.
-   * The Webhook will finalize subscription creation.
-   */
-  async createCheckout(dto: CreateCheckoutDto) {
-    const { businessId, planId, priceId, email } = dto;
+  constructor(private prisma: PrismaService) {}
 
-    // 1. Validate business
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
+  // ------------------------------------------------------------
+  // Create Checkout Session
+  // ------------------------------------------------------------
+  async createCheckoutSession(adminUserId: number, planId: number) {
+    const admin = await this.prisma.user.findUnique({
+      where: { id: adminUserId },
+      include: { business: true },
     });
-    if (!business) {
-      throw new NotFoundException('Business not found');
+
+    if (!admin || !admin.business) {
+      throw new ForbiddenException('Admin or business not found');
     }
 
-    // 2. Validate plan
-    const plan = await this.prisma.plan.findUnique({
-      where: { id: planId },
-    });
-    if (!plan) {
-      throw new NotFoundException('Plan not found');
+    const business = admin.business;
+
+    const plan = await this.prisma.plan.findUnique({ where: { id: planId } });
+
+    if (!plan || !plan.stripe_price_id) {
+      throw new ForbiddenException('Invalid plan or missing Stripe price id');
     }
 
-    // 3. Get or create Stripe customer
-    let stripeCustomerId = business.stripe_customer_id || undefined;
+    let stripeCustomerId = business.stripe_customer_id;
 
     if (!stripeCustomerId) {
-      const customer = await this.stripeService.createCustomer({
-        email,
-        name: business.name ?? undefined,
+      const customer = await this.stripe.customers.create({
+        email: admin.email,
+        name: admin.name,
       });
 
       stripeCustomerId = customer.id;
 
       await this.prisma.business.update({
-        where: { id: businessId },
-        data: { stripe_customer_id: customer.id },
+        where: { id: business.id },
+        data: { stripe_customer_id: stripeCustomerId },
       });
     }
 
-    // 4. Checkout redirect URLs
-    const successUrl = `${process.env.CLIENT_URL}/billing/success?businessId=${businessId}`;
-    const cancelUrl = `${process.env.CLIENT_URL}/billing/cancel`;
-
-    // 5. Create checkout session
-    const session = await this.stripeService.createCheckoutSession({
-      priceId: priceId ?? (plan.stripe_price_id as string),
-      customerId: stripeCustomerId,
-      successUrl,
-      cancelUrl,
-
-      // ✅ subscription-level metadata → will be available on subscription & invoices
-      subscription_data: {
-        metadata: {
-          businessId: String(businessId),
-          planId: String(planId),
-        },
-      },
-
-      // optional checkout-level metadata
+    const session = await this.stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: stripeCustomerId,
+      line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
       metadata: {
-        businessId: String(businessId),
-        planId: String(planId),
-        email,
+        businessId: business.id,
+        planId: plan.id,
       },
-    });
-
-    return { url: session.url, sessionId: session.id };
-  }
-
-  /**
-   * Create a billing portal session for existing customers.
-   */
-  async createPortal(dto: CreatePortalDto) {
-    const session = await this.stripeService.createBillingPortalSession({
-      customerId: dto.stripeCustomerId,
-      returnUrl: `${process.env.CLIENT_URL}/dashboard/settings/billing`,
+      success_url: `${process.env.FRONTEND_URL}/billing/success`,
+      cancel_url: `${process.env.FRONTEND_URL}/billing/cancel`,
     });
 
     return { url: session.url };
   }
 
-  /**
-   * Get current active subscription for UI.
-   */
-  async getBusinessSubscription(businessId: any) {
-    const IntBusinessId = Number(businessId);
-
-    if (!IntBusinessId || isNaN(IntBusinessId)) {
-      console.error('❌ Invalid businessId received:', businessId);
-      throw new Error('Invalid businessId');
-    }
-
-    const subscription = await this.prisma.subscription.findMany({
-      where: {
-        business_id: IntBusinessId,
-        status: {
-          in: ['ACTIVE', 'TRIALING', 'INCOMPLETE'],
-        },
-      },
-      include: {
-        plan: true,
-      },
+  // ------------------------------------------------------------
+  // Billing Portal Session
+  // ------------------------------------------------------------
+  async createPortal(adminUserId: number, dto: CreatePortalDto) {
+    const admin = await this.prisma.user.findUnique({
+      where: { id: adminUserId },
+      include: { business: true },
     });
 
-    return subscription;
+    if (!admin || !admin.business) {
+      throw new ForbiddenException('Admin or business not found');
+    }
+
+    if (!admin.business.stripe_customer_id) {
+      throw new ForbiddenException('Stripe customer not found for business');
+    }
+
+    const portal = await this.stripe.billingPortal.sessions.create({
+      customer: admin.business.stripe_customer_id,
+      return_url: dto.returnUrl,
+    });
+
+    return { url: portal.url };
+  }
+
+  // ------------------------------------------------------------
+  // Get Subscription for Business
+  // ------------------------------------------------------------
+  async getBusinessSubscription(businessId: number) {
+    return this.prisma.subscription.findMany({
+      where: { business_id: businessId },
+      include: { plan: true },
+    });
   }
 }
