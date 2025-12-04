@@ -1,3 +1,5 @@
+// src/billing/services/billing-webhook.service.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
@@ -52,6 +54,7 @@ export class BillingWebhookService {
   // ==============================================================
   // HELPERS
   // ==============================================================
+
   private getMetadata(obj: any) {
     const md = obj?.metadata ?? {};
     return {
@@ -64,17 +67,10 @@ export class BillingWebhookService {
     return ts ? new Date(ts * 1000) : undefined;
   }
 
-  private async findSubscriptionByStripeId(id: string) {
+  private async findSubscriptionByStripeId(id?: string | null) {
     if (!id) return null;
     return this.prisma.subscription.findFirst({
       where: { stripe_subscription_id: id },
-    });
-  }
-
-  private async findSubscriptionByCustomer(customerId: string) {
-    return this.prisma.subscription.findFirst({
-      where: { stripe_customer_id: customerId },
-      orderBy: { id: 'desc' },
     });
   }
 
@@ -85,9 +81,11 @@ export class BillingWebhookService {
     return undefined;
   }
 
-  private getStripeSubscriptionId(invoice: Stripe.Invoice): string | undefined {
-    const raw: any = (invoice as any).subscription;
-    if (!raw) return undefined;
+  private getInvoiceSubscriptionId(
+    invoice: Stripe.Invoice,
+  ): string | undefined {
+    const raw = invoice['subscription'] as string | any;
+
     if (typeof raw === 'string') return raw;
     if (raw && typeof raw === 'object' && 'id' in raw) return raw.id;
     return undefined;
@@ -108,7 +106,7 @@ export class BillingWebhookService {
     const stripeCustomerId =
       typeof rawCustomer === 'string'
         ? rawCustomer
-        : rawCustomer && 'id' in rawCustomer
+        : rawCustomer && typeof rawCustomer === 'object' && 'id' in rawCustomer
           ? (rawCustomer as any).id
           : undefined;
 
@@ -125,10 +123,11 @@ export class BillingWebhookService {
   }
 
   // ==============================================================
-  // 2) SUBSCRIPTION CREATED / UPDATED
+  // 2) SUBSCRIPTION CREATED / UPDATED (NO MAILBOX CREATION)
   // ==============================================================
   private async subscriptionUpsert(event: Stripe.Event) {
     const sub = event.data.object as Stripe.Subscription;
+
     let { businessId, planId } = this.getMetadata(sub);
 
     // fallback from DB
@@ -161,7 +160,6 @@ export class BillingWebhookService {
     const raw: any = sub;
     const startDate = this.safeDate(raw.current_period_start);
     const endDate = this.safeDate(raw.current_period_end);
-
     const stripeCustomerId = this.getStripeCustomerId(sub);
 
     await this.prisma.subscription.upsert({
@@ -191,6 +189,8 @@ export class BillingWebhookService {
     this.logger.log(
       `🔄 Subscription Updated → business=${businessId}, plan=${planId}`,
     );
+
+    // ❌ Single-Mailbox Mode → DO NOT AUTO-CREATE MAILBOX
   }
 
   // ==============================================================
@@ -234,9 +234,9 @@ export class BillingWebhookService {
     const invoice = event.data.object as Stripe.Invoice;
 
     let { businessId, planId } = this.getMetadata(invoice);
-    const stripeSubId = this.getStripeSubscriptionId(invoice);
+    const stripeSubId = this.getInvoiceSubscriptionId(invoice);
 
-    // fallback
+    // fallback if metadata missing
     if (!businessId || !planId) {
       if (stripeSubId) {
         const found = await this.findSubscriptionByStripeId(stripeSubId);
@@ -248,11 +248,11 @@ export class BillingWebhookService {
     }
 
     if (!businessId || !planId) {
-      this.logger.warn(`⚠️ invoice.payment_succeeded missing metadata`);
+      this.logger.warn(`⚠️ invoice.payment_succeeded missing business/plan`);
       return;
     }
 
-    const amount = (invoice.amount_paid ?? invoice.amount_due ?? 0) / 100;
+    const amount = (invoice.amount_paid ?? 0) / 100;
     const currency = invoice.currency?.toUpperCase() ?? 'USD';
 
     const line = invoice.lines?.data?.[0];
@@ -267,9 +267,9 @@ export class BillingWebhookService {
       where: { business_id: businessId, plan_id: planId },
       data: {
         status: 'ACTIVE',
-        start_date: startDate ?? undefined,
-        end_date: endDate ?? undefined,
-        renewal_date: endDate ?? undefined,
+        start_date: startDate,
+        end_date: endDate,
+        renewal_date: endDate,
         stripe_customer_id: this.getStripeCustomerId(invoice),
       },
     });
@@ -311,18 +311,20 @@ export class BillingWebhookService {
     const invoice = event.data.object as Stripe.Invoice;
 
     let { businessId, planId } = this.getMetadata(invoice);
-    const stripeSubId = this.getStripeSubscriptionId(invoice);
+    const stripeSubId = this.getInvoiceSubscriptionId(invoice);
 
     if (!businessId || !planId) {
-      const found = await this.findSubscriptionByStripeId(stripeSubId as any);
-      if (found) {
-        businessId = found.business_id;
-        planId = found.plan_id;
+      if (stripeSubId) {
+        const found = await this.findSubscriptionByStripeId(stripeSubId);
+        if (found) {
+          businessId = found.business_id;
+          planId = found.plan_id;
+        }
       }
     }
 
     if (!businessId || !planId) {
-      this.logger.warn(`⚠️ invoice.payment_failed missing metadata`);
+      this.logger.warn(`⚠️ invoice.payment_failed missing business/plan`);
       return;
     }
 

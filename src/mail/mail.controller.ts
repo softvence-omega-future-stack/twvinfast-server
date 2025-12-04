@@ -17,14 +17,4 @@ export class MailController {
       html: body.html,
     });
   }
-
-  // @Post('send')
-  // async send(@Body() body: any) {
-  //   return this.mailService.sendMail(body.to, body.subject, body.html);
-  // }
-  // @Get('test')
-  // async getTest() {
-  //   console.log('TEST ROUTE HIT');
-  //   return 'SERVER OK';
-  // }
 }
