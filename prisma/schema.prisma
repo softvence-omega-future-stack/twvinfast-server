@@ -1,3 +1,5 @@
+
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -76,6 +78,9 @@ model Business {
   // Stripe Billing
   stripe_customer_id String?
 
+  // ⭐ Round Robin – last assigned agent
+  last_assigned_user_id Int? // only used as scalar for round robin pointer
+
   // Relations
   users         User[]
   mailboxes     Mailbox[]
@@ -135,6 +140,9 @@ model User {
   // AI Back-relations
   aiReplies      AiGeneratedReply[]
   hallucinations AiHallucinationReport[]
+
+  // ⭐ Round Robin – all threads assigned to this agent
+  assignedThreads EmailThread[] @relation("AssignedAgent")
 }
 
 ///////////////////////////////
@@ -166,21 +174,48 @@ model Mailbox {
 ///////////////////////////////
 
 model EmailThread {
-  id              Int       @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   business_id     Int
   mailbox_id      Int
   customer_id     Int?
-  subject         String?
-  last_message_at DateTime?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  subject         String
+  last_message_at DateTime
 
-  business Business  @relation(fields: [business_id], references: [id])
+  // Thread states
+  is_archived Boolean @default(false)
+
+  // Assigned agent (Round Robin / manual)
+  assigned_user_id Int?
+  assigned_user    User? @relation("AssignedAgent", fields: [assigned_user_id], references: [id])
+
+  // Relations
+  emails   Email[]
   mailbox  Mailbox   @relation(fields: [mailbox_id], references: [id])
+  business Business  @relation(fields: [business_id], references: [id])
   customer Customer? @relation(fields: [customer_id], references: [id])
 
-  emails Email[]
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
+
+// OLD VERSION (kept only for history, but commented out)
+//
+// model EmailThread {
+//   id              Int       @id @default(autoincrement())
+//   business_id     Int
+//   mailbox_id      Int
+//   customer_id     Int?
+//   subject         String?
+//   last_message_at DateTime?
+//   created_at      DateTime  @default(now())
+//   updated_at      DateTime  @updatedAt
+//
+//   business Business  @relation(fields: [business_id], references: [id])
+//   mailbox  Mailbox   @relation(fields: [mailbox_id], references: [id])
+//   customer Customer? @relation(fields: [customer_id], references: [id])
+//
+//   emails Email[]
+// }
 
 ///////////////////////////////
 // EMAIL
@@ -225,43 +260,40 @@ model Email {
 ///////////////////////////////
 // CRM MODELS
 ///////////////////////////////
-///////////////////////////////
-// CRM MODELS
-///////////////////////////////
 
 model Customer {
-  id              Int       @id @default(autoincrement())
-  business_id     Int
-  name            String
-  email           String?
-  phone           String?
+  id          Int     @id @default(autoincrement())
+  business_id Int
+  name        String
+  email       String?
+  phone       String?
 
   // CRM fields
-  status          String?        // LEAD | CLIENT | INACTIVE | CHURNED etc.
-  lead_score      Int?           // 0–100 (AI score)
-  value_estimate  Float?         // total estimated deal value
+  status         String? // LEAD | CLIENT | INACTIVE | CHURNED etc.
+  lead_score     Int? // 0–100 (AI score)
+  value_estimate Float? // total estimated deal value
 
   // Activity
   last_contact_at DateTime?
 
   // Extra (AI + CRM friendly)
-  source             String?     // "SUBSCRIPTION", "INBOUND_EMAIL", "IMPORT", etc.
+  source             String? // "SUBSCRIPTION", "INBOUND_EMAIL", "IMPORT", etc.
   company            String?
   notes              String?
-  preferred_language String?     // "en", "bn", etc.
-  tags               Json?       // e.g. ["premium","hot","returning"]
+  preferred_language String? // "en", "bn", etc.
+  tags               Json? // e.g. ["premium","hot","returning"]
 
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   business      Business      @relation(fields: [business_id], references: [id])
   threads       EmailThread[]
   opportunities Opportunity[]
 
+  @@unique([business_id, email], name: "business_email_unique")
   // Optional but very useful for lookup
   @@index([business_id])
   @@index([email])
-  @@unique([business_id, email], name: "business_email_unique")
 }
 
 model Opportunity {
@@ -278,6 +310,7 @@ model Opportunity {
   customer Customer @relation(fields: [customer_id], references: [id])
 }
 
+// OLD VERSIONS (commented)
 // model Customer {
 //   id              Int       @id @default(autoincrement())
 //   business_id     Int
@@ -288,7 +321,7 @@ model Opportunity {
 //   lead_score      Int?
 //   value_estimate  Float?
 //   last_contact_at DateTime?
-
+//
 //   business      Business      @relation(fields: [business_id], references: [id])
 //   threads       EmailThread[]
 //   opportunities Opportunity[]
@@ -303,7 +336,7 @@ model Opportunity {
 //   value_amount Float?
 //   status       String?
 //   created_at   DateTime         @default(now())
-
+//
 //   business Business @relation(fields: [business_id], references: [id])
 //   customer Customer @relation(fields: [customer_id], references: [id])
 // }
@@ -419,9 +452,6 @@ model Integration {
 }
 
 ///////////////////////////////
-// BILLING SYSTEM (FINAL & CLEAN)
-
-///////////////////////////////
 // BILLING SYSTEM (FINAL)
 ///////////////////////////////
 
@@ -438,8 +468,8 @@ model Plan {
   is_active   Boolean @default(true)
 
   // Stripe
-  stripe_product_id String? // ⭐ UPDATED: required for Stripe product tracking
-  stripe_price_id   String? // ⭐ REQUIRED for webhooks to map price → plan
+  stripe_product_id String?
+  stripe_price_id   String?
 
   subscriptions Subscription[]
   payments      PaymentHistory[]
@@ -462,7 +492,6 @@ model Subscription {
   plan     Plan             @relation(fields: [plan_id], references: [id])
   payments PaymentHistory[]
 
-  // ⭐ UPDATED: MUST use SNAKE_CASE keys
   @@unique([business_id, plan_id], name: "business_id_plan_id")
 }
 
@@ -487,8 +516,6 @@ model PaymentHistory {
   plan         Plan          @relation(fields: [plan_id], references: [id])
   subscription Subscription? @relation(fields: [subscription_id], references: [id])
 
-  // ⭐ RECOMMENDED: Index for fast dashboard loading
   @@index([business_id])
   @@index([plan_id])
 }
-

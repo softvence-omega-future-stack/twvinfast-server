@@ -290,8 +290,8 @@ export class AuthService {
     const admin = await this.prisma.user.findUnique({
       where: { id: adminUserId },
     });
-
-    if (!admin || !admin.business_id) {
+    //  if (!admin || !admin.business_id)
+    if (!admin) {
       throw new ForbiddenException('Admin authentication required');
     }
 

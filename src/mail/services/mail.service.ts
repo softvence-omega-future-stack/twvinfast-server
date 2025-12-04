@@ -1,49 +1,27 @@
-// import { Injectable } from '@nestjs/common';
-// import * as nodemailer from 'nodemailer';
-
-// @Injectable()
-// export class MailService {
-//   private transporter = nodemailer.createTransport({
-//     host: process.env.SMTP_HOST, // mail.webador.com
-//     port: Number(process.env.SMTP_PORT) || 587, // 587 = STARTTLS
-//     secure: false, // MUST false on port 587
-//     auth: {
-//       user: process.env.SMTP_USER,
-//       pass: process.env.SMTP_PASS,
-//     },
-//     tls: {
-//       rejectUnauthorized: false, // FIXES Webador TLS issue
-//     },
-//     logger: true, // logs SMTP commands
-//     debug: true,
-//   });
-
-//   async sendMail(to: string, subject: string, html: string) {
-//     return await this.transporter.sendMail({
-//       from: `"AI Bot" <${process.env.SMTP_USER}>`,
-//       to,
-//       subject,
-//       html,
-//     });
-//   }
-// }
-
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { PrismaService } from 'prisma/prisma.service';
 
+interface SendSMTPPayload {
+  business_id: number;
+  mailbox_id: number;
+  user_id?: number;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html: string;
+}
+
 @Injectable()
 export class MailService {
-  customerSendEmail(name: string, email: string, subject: string, message: string) {
-    throw new Error('Method not implemented.');
-  }
   transporter: nodemailer.Transporter;
 
   constructor(private prisma: PrismaService) {
     this.transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
-      secure: Number(process.env.SMTP_PORT) === 465, //! SSL for 465
+      secure: Number(process.env.SMTP_PORT) === 465, // SSL for 465
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -61,19 +39,8 @@ export class MailService {
     bcc = [],
     subject,
     html,
-  }: {
-    business_id: number;
-    mailbox_id: number;
-    user_id?: number;
-    to: string[];
-    cc?: string[];
-    bcc?: string[];
-    subject: string;
-    html: string;
-  }) {
-    // -----------------------------------------------------------
-    // 1) Send Email by SMTP
-    // -----------------------------------------------------------
+  }: SendSMTPPayload) {
+    // 1) Send Email via SMTP
     const smtpInfo = await this.transporter.sendMail({
       from: process.env.SMTP_USER,
       to,
@@ -85,7 +52,7 @@ export class MailService {
 
     const messageId = smtpInfo.messageId || null;
 
-    // Add
+    // 2) Verify business & mailbox
     const business = await this.prisma.business.findUnique({
       where: { id: business_id },
     });
@@ -100,9 +67,7 @@ export class MailService {
       throw new Error(`Mailbox ID ${mailbox_id} does not exist`);
     }
 
-    // -----------------------------------------------------------
-    // 2) Find or Create EmailThread
-    // -----------------------------------------------------------
+    // 3) Find or create thread
     let thread = await this.prisma.emailThread.findFirst({
       where: {
         mailbox_id,
@@ -116,21 +81,18 @@ export class MailService {
           business_id,
           mailbox_id,
           subject,
-          customer_id: null, // no customer yet for outbound
+          customer_id: null,
           last_message_at: new Date(),
         },
       });
     } else {
-      // Update last message time
       await this.prisma.emailThread.update({
         where: { id: thread.id },
         data: { last_message_at: new Date() },
       });
     }
 
-    // -----------------------------------------------------------
-    // 3) Save Email record
-    // -----------------------------------------------------------
+    // 4) Save email record
     const email = await this.prisma.email.create({
       data: {
         business_id,
@@ -138,25 +100,22 @@ export class MailService {
         thread_id: thread.id,
         user_id: user_id ?? null,
 
-        // SMTP Meta
         message_id: messageId,
-        in_reply_to: null, // can fill later if thread exists
+        in_reply_to: null,
 
-        // Addresses
         from_address: process.env.SMTP_USER,
         to_addresses: to,
         cc_addresses: cc,
         bcc_addresses: bcc,
 
-        // Content
         subject,
         body_html: html,
         body_text: null,
 
-        // State
         folder: 'SENT',
         sent_at: new Date(),
         received_at: null,
+        is_read: true,
       },
     });
 
@@ -166,5 +125,41 @@ export class MailService {
       email_id: email.id,
       message_id: messageId,
     };
+  }
+  async customerSendEmail(
+    name: string,
+    email: string,
+    subject: string,
+    message: string,
+  ) {
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"${name}" <${email}>`,
+        to: process.env.BUSINESS_INBOX,
+        subject,
+        html: `
+        <div style="font-family: Arial; padding: 20px;">
+          <h2>New Customer Email</h2>
+
+          <p><strong>Name:</strong> ${name}</p>
+          <p><strong>Email:</strong> ${email}</p>
+          <p><strong>Subject:</strong> ${subject}</p>
+
+          <hr/>
+
+          <p>${message}</p>
+        </div>
+      `,
+      });
+
+      return {
+        success: true,
+        message: 'Customer email delivered successfully',
+        messageId: info.messageId,
+      };
+    } catch (error) {
+      console.error(error);
+      throw new InternalServerErrorException('Failed to send customer email');
+    }
   }
 }

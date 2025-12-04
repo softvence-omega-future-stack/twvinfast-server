@@ -7,6 +7,7 @@ import { Public } from './decorators/public.decorator';
 import { ChangePasswordDto, LoginDto } from './dto/registerUser.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from './decorators/roles.decorator';
+import { RolesGuard } from './strategies/roles.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -24,13 +25,20 @@ export class AuthController {
   // -----------------------------------------------------------
   // EMPLOYEE SIGNUP (requires Admin)
   // -----------------------------------------------------------
-  // !need to use
-  @UseGuards(AuthGuard('jwt'))
+  // // !need to use
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN')
   @Post('employee')
   createEmployee(@Req() req, @Body() dto: CreateUserDto) {
     return this.auth.createEmployee(req.user.sub, dto);
   }
+
+  // @UseGuards(AuthGuard('jwt'), RolesGuard)
+  // @Roles('ADMIN')
+  // @Post('employee')
+  // createEmployee(@Req() req, @Body() dto: CreateUserDto) {
+  //   return this.auth.createEmployee(req.user.sub, dto);
+  // }
 
   // -----------------------------------------------------------
   // LOGIN
