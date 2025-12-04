@@ -9,7 +9,6 @@ import { PrismaService } from 'prisma/prisma.service';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './strategies/roles.guard';
 import { JwtAuthGuard } from './strategies/jwt-auth.guard';
-import { AccessTokenStrategy } from './strategies/access-token.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -29,7 +28,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuthService,
     JwtStrategy,
     RolesGuard,
-    AccessTokenStrategy,
+  
     RefreshTokenStrategy, // Refresh Token Guard,
 
     // 1️⃣ FIRST: Global AuthGuard ('jwt')
