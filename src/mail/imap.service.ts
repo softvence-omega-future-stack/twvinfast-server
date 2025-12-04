@@ -36,54 +36,63 @@ export class ImapService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async startMailbox(box: any) {
-    this.logger.log(`📬 Booting IMAP for: ${box.email_address}`);
+    const host = box.imap_host || process.env.IMAP_HOST;
+    const port = box.imap_port || Number(process.env.IMAP_PORT) || 993;
+    const secure = box.is_ssl ?? (port === 993);
+
+    const user = box.email_address || process.env.IMAP_USER;
+    const pass = box.password || process.env.IMAP_PASS;
+
+    this.logger.log(`📬 Booting IMAP for: ${user}`);
+    this.logger.log(`🔧 Host: ${host}, Port: ${port}, SSL: ${secure}`);
     this.logger.log(
-      `🔧 Host: ${box.imap_host}, Port: ${box.imap_port}, SSL: ${box.imap_port === 993}`,
+      `🔐 Auth → user=${user}, pass=${pass ? '[HIDDEN]' : '❌ MISSING'}`
     );
 
     const client = new ImapFlow({
-      host: box.imap_host,
-      port: box.imap_port,
-      secure: box.imap_port === 993,
-      auth: {
-        user: box.email_address,
-        pass: box.password,
-      },
-      logger: false, // <— FIXED
+      host,
+      port,
+      secure,
+      auth: { user, pass },
+      logger: false,
       tls: { rejectUnauthorized: false },
-      connectionTimeout: 15000,
+      connectionTimeout: 30000, // stable timeout
     });
 
+    // ====== EVENTS ======
+
     client.on('error', (err) => {
-      this.logger.error(
-        `❌ IMAP Error (${box.email_address}): ${err?.message}`,
-      );
+      this.logger.error(`❌ IMAP Error (${user}): ${err?.message}`);
       this.reconnect(box);
     });
 
     client.on('close', () => {
-      this.logger.warn(`⚠️ IMAP Closed → ${box.email_address}`);
+      this.logger.warn(`⚠️ IMAP Closed → ${user}`);
       this.reconnect(box);
     });
 
+    // ====== CONNECT ======
+
     try {
-      this.logger.log(`🔌 Connecting → ${box.imap_host}:${box.imap_port}`);
+      this.logger.log(`🔌 Connecting → ${host}:${port}`);
       await client.connect();
-      this.logger.log(`✅ Connected to IMAP: ${box.email_address}`);
+      this.logger.log(`✅ Login OK → ${user}`);
 
       this.clients.set(box.id, client);
       this.listenForEvents(client, box);
 
+      // Initial inbox sync
       await this.syncInbox(box.id);
     } catch (err) {
-      this.logger.error(`❌ Connection Failed for ${box.email_address}`);
+      this.logger.error(`❌ Connection Failed for ${user}`);
       this.logger.error(err);
       this.reconnect(box);
     }
   }
 
   private reconnect(box: any) {
-    this.logger.warn(`🔁 Reconnecting in 30 seconds → ${box.email_address}`);
+    const email = box.email_address || process.env.IMAP_USER;
+    this.logger.warn(`🔁 Reconnecting in 30 seconds → ${email}`);
     setTimeout(() => this.startMailbox(box), 30000);
   }
 
@@ -101,7 +110,6 @@ export class ImapService implements OnModuleInit, OnModuleDestroy {
       where: { id: mailbox_id },
     });
 
-    // <— FIXED (TS2322)
     if (!box) {
       this.logger.error(`❌ Mailbox ${mailbox_id} not found in DB`);
       return;
