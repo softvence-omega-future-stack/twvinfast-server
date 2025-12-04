@@ -3,8 +3,8 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { SendEmailDto } from '../dto/send-email.dto';
 import { AiGenerateDto } from '../dto/ai-generate.dto';
 import { CustomerSendEmailDto } from '../dto/customer-email.dto';
-import { MailService } from '../mail.service';
 import { Public } from 'src/auth/decorators/public.decorator';
+import { MailService } from '../services/mail.service';
 // import { AiService } from '../services/ai.service';
 
 @Controller('mail')

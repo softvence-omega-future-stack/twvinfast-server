@@ -1,5 +1,5 @@
 import { Controller, Param, ParseIntPipe, Post } from '@nestjs/common';
-import { ImapService } from '../imap.service';
+import { ImapService } from '../services/imap.service';
 
 @Controller('mail')
 export class ImapController {
