@@ -78,8 +78,6 @@ model Business {
   // Stripe Billing
   stripe_customer_id String?
 
-  // ⭐ Round Robin – last assigned agent
-  last_assigned_user_id Int? // only used as scalar for round robin pointer
 
   // Relations
   users         User[]
@@ -141,8 +139,7 @@ model User {
   aiReplies      AiGeneratedReply[]
   hallucinations AiHallucinationReport[]
 
-  // ⭐ Round Robin – all threads assigned to this agent
-  assignedThreads EmailThread[] @relation("AssignedAgent")
+  
 }
 
 ///////////////////////////////
@@ -165,8 +162,8 @@ model Mailbox {
   business Business @relation(fields: [business_id], references: [id])
   user     User     @relation(fields: [user_id], references: [id])
 
-  threads EmailThread[]
-  emails  Email[]
+  // threads EmailThread[]
+  // emails  Email[]
 }
 
 ///////////////////////////////
@@ -184,13 +181,11 @@ model EmailThread {
   // Thread states
   is_archived Boolean @default(false)
 
-  // Assigned agent (Round Robin / manual)
-  assigned_user_id Int?
-  assigned_user    User? @relation("AssignedAgent", fields: [assigned_user_id], references: [id])
+
 
   // Relations
-  emails   Email[]
-  mailbox  Mailbox   @relation(fields: [mailbox_id], references: [id])
+  // emails   Email[]
+  // mailbox  Mailbox   @relation(fields: [mailbox_id], references: [id])
   business Business  @relation(fields: [business_id], references: [id])
   customer Customer? @relation(fields: [customer_id], references: [id])
 
@@ -225,7 +220,7 @@ model Email {
   id          Int  @id @default(autoincrement())
   business_id Int
   mailbox_id  Int
-  thread_id   Int
+  thread_id   Int?
   user_id     Int?
 
   message_id    String?
@@ -246,8 +241,8 @@ model Email {
   updated_at    DateTime     @updatedAt
 
   business Business    @relation(fields: [business_id], references: [id])
-  mailbox  Mailbox     @relation(fields: [mailbox_id], references: [id])
-  thread   EmailThread @relation(fields: [thread_id], references: [id])
+  // mailbox  Mailbox     @relation(fields: [mailbox_id], references: [id])
+  // thread   EmailThread @relation(fields: [thread_id], references: [id])
   user     User?       @relation(fields: [user_id], references: [id])
 
   insight   AIEmailInsight?
@@ -310,38 +305,7 @@ model Opportunity {
   customer Customer @relation(fields: [customer_id], references: [id])
 }
 
-// OLD VERSIONS (commented)
-// model Customer {
-//   id              Int       @id @default(autoincrement())
-//   business_id     Int
-//   name            String
-//   email           String?
-//   phone           String?
-//   status          String?
-//   lead_score      Int?
-//   value_estimate  Float?
-//   last_contact_at DateTime?
-//
-//   business      Business      @relation(fields: [business_id], references: [id])
-//   threads       EmailThread[]
-//   opportunities Opportunity[]
-// }
-
-// model Opportunity {
-//   id           Int              @id @default(autoincrement())
-//   business_id  Int
-//   customer_id  Int
-//   name         String
-//   stage        OpportunityStage
-//   value_amount Float?
-//   status       String?
-//   created_at   DateTime         @default(now())
-//
-//   business Business @relation(fields: [business_id], references: [id])
-//   customer Customer @relation(fields: [customer_id], references: [id])
-// }
-
-///////////////////////////////
+///////////////////////
 // AI MODELS
 ///////////////////////////////
 
@@ -475,22 +439,45 @@ model Plan {
   payments      PaymentHistory[]
 }
 
+// model Subscription {
+//   id           Int       @id @default(autoincrement())
+//   business_id  Int
+//   plan_id      Int
+//   status       String    @default("ACTIVE")
+//   start_date   DateTime?
+//   end_date     DateTime?
+//   renewal_date DateTime?
+
+//   // Stripe fields
+//   stripe_customer_id     String?
+//   stripe_subscription_id String?
+
+//   business Business         @relation(fields: [business_id], references: [id])
+//   plan     Plan             @relation(fields: [plan_id], references: [id])
+//   payments PaymentHistory[]
+
+//   @@unique([business_id, plan_id], name: "business_id_plan_id")
+// }
 model Subscription {
-  id           Int       @id @default(autoincrement())
-  business_id  Int
-  plan_id      Int
-  status       String    @default("ACTIVE")
-  start_date   DateTime?
-  end_date     DateTime?
-  renewal_date DateTime?
+  id                   Int       @id @default(autoincrement())
+  business_id          Int
+  plan_id              Int
 
-  // Stripe fields
-  stripe_customer_id     String?
+  status               String    @default("ACTIVE")
+
+  start_date           DateTime?
+  end_date             DateTime?
+  renewal_date         DateTime?
+
   stripe_subscription_id String?
+  stripe_customer_id     String?
 
-  business Business         @relation(fields: [business_id], references: [id])
-  plan     Plan             @relation(fields: [plan_id], references: [id])
-  payments PaymentHistory[]
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  business  Business @relation(fields: [business_id], references: [id])
+  plan      Plan     @relation(fields: [plan_id], references: [id])
+  payments  PaymentHistory[]
 
   @@unique([business_id, plan_id], name: "business_id_plan_id")
 }

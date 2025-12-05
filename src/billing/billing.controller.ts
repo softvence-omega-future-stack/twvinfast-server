@@ -18,6 +18,7 @@ import { Public } from 'src/auth/decorators/public.decorator';
 import { AuthGuard } from '@nestjs/passport';
 import { CreateCheckoutDto, CreatePortalDto } from './dto/create-portal.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { CreatePlanDto } from './dto/create-plan.dto';
 
 @Controller('billing')
 export class BillingController {
@@ -34,6 +35,7 @@ export class BillingController {
   @UseGuards(AuthGuard('jwt'))
   @Roles('ADMIN')
   async createCheckout(@Req() req, @Body() dto: CreateCheckoutDto) {
+    console.log(req.user.sub);
     return this.billingService.createCheckoutSession(req.user.sub, dto.planId);
   }
 
@@ -91,5 +93,11 @@ export class BillingController {
     await this.billingWebhookService.handleEvent(event);
 
     return { received: true };
+  }
+
+  @Post('create-plan')
+  @Roles('SUPER_ADMIN')
+  async createPlan(@Body() dto: CreatePlanDto) {
+    return this.billingService.createPlan(dto);
   }
 }

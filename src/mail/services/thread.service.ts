@@ -24,10 +24,10 @@ export class ThreadService {
     });
   }
 
-  assignThread(thread_id: number, user_id: number) {
-    return this.prisma.emailThread.update({
-      where: { id: thread_id },
-      data: { assigned_user_id: user_id },
-    });
-  }
+  // assignThread(thread_id: number, user_id: number) {
+  //   return this.prisma.emailThread.update({
+  //     where: { id: thread_id },
+  //     data: { assigned_user_id: user_id },
+  //   });
+  // }
 }

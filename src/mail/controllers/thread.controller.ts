@@ -27,8 +27,8 @@ export class ThreadController {
   }
 
   // Assign agent
-  @Patch('assign')
-  async assign(@Body() body: AssignThreadDto) {
-    return this.threadService.assignThread(body.thread_id, body.user_id);
-  }
+  // @Patch('assign')
+  // async assign(@Body() body: AssignThreadDto) {
+  //   return this.threadService.assignThread(body.thread_id, body.user_id);
+  // }
 }

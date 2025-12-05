@@ -196,7 +196,7 @@ async function main() {
     interval: 'month',
     email_limit: 500,
     ai_credits: 10000,
-    features: { inbox_ai: true, crm_sync: false, multi_mailbox: false },
+    features: { inbox_ai: true },
   });
 
   await seedPlan({
@@ -206,7 +206,7 @@ async function main() {
     interval: 'month',
     email_limit: 5000,
     ai_credits: 100000,
-    features: { inbox_ai: true, crm_sync: true, multi_mailbox: true },
+    features: { inbox_ai: true },
   });
 
   await seedPlan({
@@ -221,6 +221,18 @@ async function main() {
       crm_sync: true,
       multi_mailbox: true,
       automations: true,
+    },
+  });
+
+  await seedPlan({
+    id: 4,
+    name: 'Starter Yearly',
+    amount: 190, // example price: discount for annual billing
+    interval: 'year',
+    email_limit: 500,
+    ai_credits: 10000 * 12,
+    features: {
+      inbox_ai: true,
     },
   });
 
