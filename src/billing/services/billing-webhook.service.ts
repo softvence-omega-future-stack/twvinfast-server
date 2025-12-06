@@ -1,4 +1,3 @@
-
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
@@ -75,7 +74,6 @@ export class BillingWebhookService {
     }
     return true;
   }
-
 
   private getPeriod(sub: any) {
     const start = sub.current_period_start
@@ -156,7 +154,7 @@ export class BillingWebhookService {
       update: {
         status: sub.status.toUpperCase(),
         start_date: startDate,
-        end_date:renewalDate,
+        end_date: renewalDate,
         renewal_date: renewalDate,
       },
     });

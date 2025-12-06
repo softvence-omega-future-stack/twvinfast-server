@@ -14,9 +14,43 @@ export class ImapService implements OnModuleInit, OnModuleDestroy {
 
   constructor(private prisma: PrismaService) {}
 
+  // async onModuleInit() {
+  //   this.logger.log('🔄 IMAP Debug Service Starting...');
+  //   await this.initializeMailboxes();
+  // }
+
   async onModuleInit() {
     this.logger.log('🔄 IMAP Debug Service Starting...');
-    await this.initializeMailboxes();
+
+    const maxRetries = 5;
+    const retryDelay = 2000; // 2 seconds
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(
+          `📨 Initializing IMAP Mailboxes (Attempt ${attempt}/${maxRetries})...`,
+        );
+
+        await this.initializeMailboxes();
+
+        this.logger.log('✅ IMAP Mailboxes Initialized Successfully!');
+        return;
+      } catch (error) {
+        this.logger.error(
+          `❌ IMAP Initialization Failed (Attempt ${attempt}/${maxRetries}): ${error.message}`,
+        );
+
+        if (attempt === maxRetries) {
+          this.logger.error(
+            '🚨 Maximum retry limit reached. IMAP service could not initialize.',
+          );
+          throw error;
+        }
+
+        // wait before retry
+        await new Promise((res) => setTimeout(res, retryDelay));
+      }
+    }
   }
 
   async onModuleDestroy() {
@@ -151,7 +185,6 @@ export class ImapService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-  
     await this.prisma.email.create({
       data: {
         business_id: box.business_id,

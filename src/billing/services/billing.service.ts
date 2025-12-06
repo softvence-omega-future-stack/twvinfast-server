@@ -229,4 +229,20 @@ export class BillingService {
       },
     });
   }
+  async getAllSubscriptions() {
+    const subscriptions = await this.prisma.subscription.findMany({
+      include: {
+        plan: true,
+        business: true, // owner নেই, তাই শুধু business
+      },
+      orderBy: {
+        created_at: 'desc', // MUST use created_at
+      },
+    });
+
+    return {
+      count: subscriptions.length,
+      subscriptions,
+    };
+  }
 }

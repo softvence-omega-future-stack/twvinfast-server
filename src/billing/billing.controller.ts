@@ -52,6 +52,14 @@ export class BillingController {
   }
 
   // -------------------------------------------------------------------------
+  @Get('all-subscription')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  async getAllSubscription() {
+    return this.billingService.getAllSubscriptions();
+  }
+
+  // -------------------------------------------------------------------------
   // ADMIN → Create Checkout Session (Trial / Monthly / Annual)
   // -------------------------------------------------------------------------
   @Post('checkout')
