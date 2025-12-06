@@ -1,4 +1,4 @@
-// src/stripe/stripe.service.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 
@@ -8,108 +8,80 @@ export class StripeService {
   private readonly stripe: Stripe;
 
   constructor() {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      this.logger.error(
-        'STRIPE_SECRET_KEY is not set in environment variables',
-      );
-      throw new Error('Missing STRIPE_SECRET_KEY');
+    const secret = process.env.STRIPE_SECRET_KEY;
+
+    if (!secret) {
+      throw new Error('❌ STRIPE_SECRET_KEY missing');
     }
 
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-06-20' as any,
+    this.stripe = new Stripe(secret, {
+      apiVersion: '2023-10-16' as any,
     });
   }
 
   get client() {
     return this.stripe;
   }
-  // ADD THESE METHODS ↓↓↓
-  // ================================
-  async retrieveCharge(chargeId: string) {
-    return this.stripe.charges.retrieve(chargeId);
+
+  async createCustomer(data: Stripe.CustomerCreateParams) {
+    return this.stripe.customers.create(data);
   }
 
-  // ------------------------------------------------
-  // 1) CUSTOMER
-  // ------------------------------------------------
-  async createCustomer(params: {
-    email?: string;
-    name?: string;
-    metadata?: Record<string, string>;
-  }) {
-    return this.stripe.customers.create({
-      email: params.email,
-      name: params.name,
-      metadata: params.metadata,
+  async retrieveCustomer(id: string) {
+    return this.stripe.customers.retrieve(id);
+  }
+
+  async retrieveInvoice(id: string) {
+    return this.stripe.invoices.retrieve(id);
+  }
+
+  async retrieveSubscription(id: string) {
+    return this.stripe.subscriptions.retrieve(id);
+  }
+
+  async createBillingPortalSession(customerId: string, returnUrl: string) {
+    return this.stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: returnUrl,
     });
   }
 
-  // ------------------------------------------------
-  // 2) SUBSCRIPTION CHECKOUT SESSION
-  // ------------------------------------------------
-  async createCheckoutSession(params: {
+  // 30-day trial ALWAYS applied
+  async createSubscriptionCheckoutSession(params: {
+    customerId: string;
     priceId: string;
-    customerId?: string;
     successUrl: string;
     cancelUrl: string;
-    // checkout-level metadata
-    metadata?: Record<string, string>;
-    // subscription-level metadata
-    subscription_data?: {
-      metadata?: Record<string, string>;
-    };
+    businessId: number;
+    planId: number;
   }) {
+    const { customerId, priceId, successUrl, cancelUrl, businessId, planId } =
+      params;
+
     return this.stripe.checkout.sessions.create({
       mode: 'subscription',
-      payment_method_types: ['card'],
-      customer: params.customerId,
-      success_url: params.successUrl,
-      cancel_url: params.cancelUrl,
-      line_items: [
-        {
-          price: params.priceId,
-          quantity: 1,
+      customer: customerId,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      line_items: [{ price: priceId, quantity: 1 }],
+      subscription_data: {
+        trial_period_days: 30,
+        metadata: {
+          businessId: String(businessId),
+          planId: String(planId),
         },
-      ],
-      // 🔥 attaches metadata to subscription → used later in webhooks
-      subscription_data: params.subscription_data,
-      // checkout session metadata
-      metadata: params.metadata,
+      },
+      metadata: {
+        businessId: String(businessId),
+        planId: String(planId),
+      },
     });
   }
 
-  // ------------------------------------------------
-  // 3) BILLING PORTAL
-  // ------------------------------------------------
-  async createBillingPortalSession(params: {
-    customerId: string;
-    returnUrl: string;
-  }) {
-    return this.stripe.billingPortal.sessions.create({
-      customer: params.customerId,
-      return_url: params.returnUrl,
-    });
-  }
+  constructEventFromPayload(signature: string, payload: Buffer) {
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!secret) throw new Error('Webhook secret missing');
 
-  // ------------------------------------------------
-  // 4) WEBHOOK SIGNATURE VERIFY
-  // ------------------------------------------------
-  constructWebhookEvent(rawBody: Buffer, signature: string, secret: string) {
-    return this.stripe.webhooks.constructEvent(rawBody, signature, secret);
-  }
-
-  // (optional helpers)
-  async retrieveSubscription(subscriptionId: string) {
-    return this.stripe.subscriptions.retrieve(subscriptionId);
-  }
-
-  async cancelSubscription(subscriptionId: string) {
-    return this.stripe.subscriptions.update(subscriptionId, {
-      cancel_at_period_end: true,
-    });
-  }
-
-  async cancelSubscriptionImmediately(subscriptionId: string) {
-    return this.stripe.subscriptions.cancel(subscriptionId);
+    return this.stripe.webhooks.constructEvent(payload, signature, secret);
   }
 }

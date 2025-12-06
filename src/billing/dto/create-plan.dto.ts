@@ -4,6 +4,9 @@ export class CreatePlanDto {
   @IsString()
   name: string;
 
+  @IsString()
+  description: string;
+
   @IsNumber()
   amount: number;
 

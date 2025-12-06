@@ -6,12 +6,12 @@ import { BillingService } from './services/billing.service';
 import { BillingWebhookService } from './services/billing-webhook.service';
 
 import { StripeModule } from 'src/stripe/stripe.module';
-import { PrismaService } from 'prisma/prisma.service';
+import { PrismaModule } from 'prisma/prisma.module';
 
 @Module({
-  imports: [StripeModule],
+  imports: [StripeModule, PrismaModule], // ✅ FIXED
   controllers: [BillingController],
-  providers: [BillingService, BillingWebhookService, PrismaService],
+  providers: [BillingService, BillingWebhookService],
   exports: [BillingService],
 })
 export class BillingModule {}

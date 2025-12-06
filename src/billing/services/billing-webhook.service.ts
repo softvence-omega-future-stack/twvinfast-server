@@ -1,463 +1,278 @@
-// src/billing/services/billing-webhook.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
+import { StripeService } from 'src/stripe/stripe.service';
 
 @Injectable()
 export class BillingWebhookService {
-  private readonly logger = new Logger(BillingWebhookService.name);
+  private logger = new Logger(BillingWebhookService.name);
 
-  // Stripe client needed for metadata fallback
-  private stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-    apiVersion: '2023-10-16' as any,
-  });
+  constructor(
+    private prisma: PrismaService,
+    private stripe: StripeService,
+  ) {}
 
-  constructor(private readonly prisma: PrismaService) {}
-
-  // ==============================================================
-  // MAIN STRIPE WEBHOOK HANDLER
-  // ==============================================================
-  async handleEvent(event: Stripe.Event): Promise<void> {
-    this.logger.log(`➡️ Stripe Webhook: ${event.type} (${event.id})`);
+  // ---------------------------
+  // MAIN HANDLER
+  // ---------------------------
+  async handleEvent(event: Stripe.Event) {
+    this.logger.log(`➡️ Event: ${event.type} (${event.id})`);
 
     try {
       switch (event.type) {
         case 'checkout.session.completed':
-          await this.checkoutSessionCompleted(event);
-          break;
+          return this.checkoutCompleted(event);
 
         case 'customer.subscription.created':
         case 'customer.subscription.updated':
-          await this.subscriptionUpsert(event);
-          break;
+          return this.subscriptionUpsert(event);
 
         case 'customer.subscription.deleted':
-          await this.subscriptionDeleted(event);
-          break;
+          return this.subscriptionDeleted(event);
 
         case 'invoice.payment_succeeded':
-          await this.invoicePaymentSucceeded(event);
-          break;
+          return this.invoicePaid(event);
 
         case 'invoice.payment_failed':
-          await this.invoicePaymentFailed(event);
-          break;
+          return this.invoiceFailed(event);
+
+        case 'invoice.paid':
+          this.logger.debug('Skipping invoice.paid to prevent duplicate');
+          return;
 
         default:
-          this.logger.log(`ℹ️ Unhandled webhook: ${event.type}`);
+          this.logger.debug(`No handler for event ${event.type}`);
+          return;
       }
-    } catch (err: any) {
-      this.logger.error(
-        `❌ Error processing event=${event.type}: ${err.message}`,
-        err.stack,
-      );
+    } catch (err) {
+      this.logger.error(`❌ Webhook error: ${(err as any).message}`);
       throw err;
     }
   }
 
-  // ==============================================================
+  // ---------------------------
   // HELPERS
-  // ==============================================================
-
-  private getMetadata(obj: any) {
-    const md = obj?.metadata ?? {};
+  // ---------------------------
+  private extractMetadata(metadata: any) {
     return {
-      businessId: md.businessId ? Number(md.businessId) : undefined,
-      planId: md.planId ? Number(md.planId) : undefined,
+      businessId: metadata?.businessId
+        ? Number(metadata.businessId)
+        : undefined,
+      planId: metadata?.planId ? Number(metadata.planId) : undefined,
     };
   }
 
-  private async findSubscriptionByStripeId(id?: string | null) {
-    if (!id) return null;
-    return this.prisma.subscription.findFirst({
-      where: { stripe_subscription_id: id },
-    });
-  }
-
-  private getInvoiceSubscriptionId(
-    invoice: Stripe.Invoice,
-  ): string | undefined {
-    const sub = invoice['subscription'];
-    if (typeof sub === 'string') return sub;
-    if (sub && typeof sub === 'object' && 'id' in sub) return sub.id;
-    return undefined;
-  }
-
-  private getStripeCustomerId(obj: any): string | undefined {
-    const raw = obj?.customer;
-    if (typeof raw === 'string') return raw;
-    if (raw && typeof raw === 'object' && 'id' in raw) return raw.id;
-    return undefined;
-  }
-
-  private safeDate(ts?: number | null): Date | undefined {
-    return ts ? new Date(ts * 1000) : undefined;
-  }
-
-  // ==============================================================
-  // 1) CHECKOUT SESSION COMPLETED
-  // ==============================================================
-  private async checkoutSessionCompleted(event: Stripe.Event) {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const { businessId, planId } = this.getMetadata(session);
-
-    this.logger.log(
-      `✅ Checkout Completed → business=${businessId}, plan=${planId}`,
-    );
-
-    const rawCustomer = session.customer;
-    const stripeCustomerId =
-      typeof rawCustomer === 'string'
-        ? rawCustomer
-        : rawCustomer && typeof rawCustomer === 'object'
-          ? (rawCustomer as any).id
-          : undefined;
-
-    if (businessId && stripeCustomerId) {
-      await this.prisma.business.update({
-        where: { id: businessId },
-        data: { stripe_customer_id: stripeCustomerId },
-      });
-
-      this.logger.log(
-        `🏷️ Saved stripe_customer_id=${stripeCustomerId} to business=${businessId}`,
-      );
-    }
-  }
-
-  // ==============================================================
-  // 2) SUBSCRIPTION CREATED / UPDATED
-  // ==============================================================
-  private async subscriptionUpsert(event: Stripe.Event) {
-    const sub = event.data.object as Stripe.Subscription;
-
-    let { businessId, planId } = this.getMetadata(sub);
-
-    // fallback: read DB record if exists
+  private ensureMeta(
+    businessId: number | undefined,
+    planId: number | undefined,
+  ) {
     if (!businessId || !planId) {
-      const existing = await this.findSubscriptionByStripeId(sub.id);
-      if (existing) {
-        businessId = businessId ?? existing.business_id;
-        planId = planId ?? existing.plan_id;
-      }
-    }
-
-    // fallback: match plan by priceId
-    if (!planId && sub.items?.data?.length) {
-      const priceId = sub.items.data[0]?.price?.id;
-      if (priceId) {
-        const plan = await this.prisma.plan.findFirst({
-          where: { stripe_price_id: priceId },
-        });
-        if (plan) planId = plan.id;
-      }
-    }
-
-    if (!businessId || !planId) {
-      this.logger.warn(
-        `⚠️ Unable to resolve business/plan for subscription=${sub.id}`,
+      this.logger.error(
+        `❌ Missing businessId/planId → aborting subscription operation`,
       );
-      return;
+      return false;
     }
+    return true;
+  }
 
-    const raw: any = sub;
 
-    const startDate = this.safeDate(raw.current_period_start);
-    const endDate = this.safeDate(raw.current_period_end);
+  private getPeriod(sub: any) {
+    const start = sub.current_period_start
+      ? new Date(sub.current_period_start * 1000)
+      : null;
+
+    const end = sub.current_period_end
+      ? new Date(sub.current_period_end * 1000)
+      : null;
+
+    return {
+      startDate: start,
+      renewalDate: end,
+    };
+  }
+  // ---------------------------
+  // CHECKOUT COMPLETED
+  // ---------------------------
+  private async checkoutCompleted(event: any) {
+    const session = event.data.object;
+
+    const subscriptionId = session.subscription;
+    const customerId = session.customer;
+    const { businessId, planId } = this.extractMetadata(session.metadata);
+
+    if (!this.ensureMeta(businessId, planId)) return;
+
+    const sub = await this.stripe.retrieveSubscription(subscriptionId);
+    const { startDate, renewalDate } = this.getPeriod(sub);
 
     await this.prisma.subscription.upsert({
       where: {
-        business_id_plan_id: { business_id: businessId, plan_id: planId },
+        business_id_plan_id: { business_id: businessId!, plan_id: planId! },
       },
       create: {
-        business_id: businessId,
-        plan_id: planId,
-        status: (sub.status ?? 'active').toUpperCase(),
+        business_id: businessId!,
+        plan_id: planId!,
+        stripe_subscription_id: subscriptionId,
+        stripe_customer_id: customerId,
+        status: 'TRIALING',
         start_date: startDate,
-        end_date: endDate,
-        renewal_date: endDate,
-        stripe_subscription_id: sub.id,
-        stripe_customer_id: this.getStripeCustomerId(sub),
+        renewal_date: renewalDate,
       },
       update: {
-        status: (sub.status ?? 'active').toUpperCase(),
-        start_date: startDate ?? undefined,
-        end_date: endDate ?? undefined,
-        renewal_date: endDate ?? undefined,
-        stripe_subscription_id: sub.id,
-        stripe_customer_id: this.getStripeCustomerId(sub) ?? undefined,
+        status: 'TRIALING',
+        start_date: startDate,
+        renewal_date: renewalDate,
       },
     });
 
-    this.logger.log(
-      `🔄 Subscription Updated → business=${businessId}, plan=${planId}`,
-    );
+    this.logger.log(`✅ Subscription created (TRIAL) business=${businessId}`);
   }
 
-  // ==============================================================
-  // 3) SUBSCRIPTION DELETED
-  // ==============================================================
-  private async subscriptionDeleted(event: Stripe.Event) {
-    const sub = event.data.object as Stripe.Subscription;
+  // ---------------------------
+  // SUBSCRIPTION CREATED/UPDATED
+  // ---------------------------
+  private async subscriptionUpsert(event: any) {
+    const sub = event.data.object;
 
-    let { businessId, planId } = this.getMetadata(sub);
+    const { businessId, planId } = this.extractMetadata(sub.metadata);
+    if (!this.ensureMeta(businessId, planId)) return;
 
-    // fallback from DB
-    if (!businessId || !planId) {
-      const found = await this.findSubscriptionByStripeId(sub.id);
-      if (found) {
-        businessId = found.business_id;
-        planId = found.plan_id;
-      }
-    }
+    const { startDate, renewalDate } = this.getPeriod(sub);
 
-    if (!businessId || !planId) {
-      this.logger.warn(`⚠️ subscription.deleted missing business/plan`);
-      return;
-    }
+    await this.prisma.subscription.upsert({
+      where: {
+        business_id_plan_id: { business_id: businessId!, plan_id: planId! },
+      },
+      create: {
+        business_id: businessId!,
+        plan_id: planId!,
+        stripe_subscription_id: sub.id,
+        stripe_customer_id: sub.customer,
+        status: sub.status.toUpperCase(),
+        start_date: startDate,
+        renewal_date: renewalDate,
+      },
+      update: {
+        status: sub.status.toUpperCase(),
+        start_date: startDate,
+        end_date:renewalDate,
+        renewal_date: renewalDate,
+      },
+    });
+
+    this.logger.log(`🔄 Subscription updated business=${businessId}`);
+  }
+
+  // ---------------------------
+  // SUBSCRIPTION DELETED
+  // ---------------------------
+  private async subscriptionDeleted(event: any) {
+    const sub = event.data.object;
+    const { businessId, planId } = this.extractMetadata(sub.metadata);
+
+    if (!this.ensureMeta(businessId, planId)) return;
 
     await this.prisma.subscription.updateMany({
-      where: { business_id: businessId, plan_id: planId },
+      where: { business_id: businessId!, plan_id: planId! },
       data: {
-        status: 'CANCELLED',
+        status: 'CANCELED',
         end_date: new Date(),
       },
     });
 
-    this.logger.log(
-      `❌ Subscription cancelled → business=${businessId}, plan=${planId}`,
-    );
+    this.logger.log(`🚫 Subscription canceled business=${businessId}`);
   }
 
-  // ==============================================================
-  // 4) INVOICE PAYMENT SUCCEEDED  (FULLY FIXED VERSION)
-  // ==============================================================
-  private async invoicePaymentSucceeded(event: Stripe.Event) {
-    const invoice = event.data.object as Stripe.Invoice;
+  // ---------------------------
+  // PAYMENT SUCCEEDED
+  // ---------------------------
+  private async invoicePaid(event: any) {
+    const invoice = event.data.object;
 
-    // 1) Try invoice metadata first
-    let { businessId, planId } = this.getMetadata(invoice);
-
-    // 2) Read subscription id from invoice
-    let stripeSubId = this.getInvoiceSubscriptionId(invoice);
-
-    // 3) Fallback: sometimes inside invoice.lines[].subscription
-    if (!stripeSubId) {
-      const firstLine: any = invoice.lines?.data?.[0];
-      if (
-        firstLine?.subscription &&
-        typeof firstLine.subscription === 'string'
-      ) {
-        stripeSubId = firstLine.subscription;
-      }
+    // Prevent duplicate billing
+    const dup = await this.prisma.paymentHistory.findFirst({
+      where: { stripe_invoice_id: invoice.id },
+    });
+    if (dup) {
+      this.logger.warn(`Duplicate invoice ignored: ${invoice.id}`);
+      return;
     }
 
-    // 4) Fetch subscription from Stripe to get metadata and periods
-    let subFromStripe: Stripe.Subscription | null = null;
+    const subscriptionId =
+      invoice.subscription ?? invoice.lines.data[0]?.subscription;
 
-    if (stripeSubId) {
-      try {
-        subFromStripe = await this.stripe.subscriptions.retrieve(stripeSubId);
-        const m = subFromStripe.metadata || {};
-        if (!businessId && m.businessId) businessId = Number(m.businessId);
-        if (!planId && m.planId) planId = Number(m.planId);
-      } catch (err) {
-        this.logger.error(
-          `❌ Failed fetching subscription ${stripeSubId}: ${(err as any)?.message}`,
-        );
-      }
-    }
+    const sub = await this.prisma.subscription.findFirst({
+      where: { stripe_subscription_id: subscriptionId },
+    });
 
-    // 5) Fallback: read DB subscription
-    if ((!businessId || !planId) && stripeSubId) {
-      const found = await this.findSubscriptionByStripeId(stripeSubId);
-      if (found) {
-        businessId = businessId ?? found.business_id;
-        planId = planId ?? found.plan_id;
-      }
-    }
-
-    // 6) Fallback: resolve business by stripe_customer_id
-    if (!businessId) {
-      const stripeCustomerId = this.getStripeCustomerId(invoice);
-      if (stripeCustomerId) {
-        const biz = await this.prisma.business.findFirst({
-          where: { stripe_customer_id: stripeCustomerId },
-        });
-        if (biz) businessId = biz.id;
-      }
-    }
-
-    // 7) Fallback: resolve plan via invoice item's price id
-    if (!planId) {
-      const firstLine: any = invoice.lines?.data?.[0];
-      const priceId = firstLine?.price?.id;
-      if (priceId) {
-        const plan = await this.prisma.plan.findFirst({
-          where: { stripe_price_id: priceId },
-        });
-        if (plan) planId = plan.id;
-      }
-    }
-
-    // If still missing → cannot continue
-    if (!businessId || !planId) {
+    if (!sub) {
       this.logger.warn(
-        `⚠️ invoice.payment_succeeded missing business/plan — invoice=${invoice.id} subscription=${stripeSubId}`,
+        `⚠️ No subscription found for invoice=${invoice.id} → skipping.`,
       );
       return;
     }
 
-    // ============ DATE RESOLUTION SECTION ============= //
-
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-
-    // 1) BEST SOURCE → subscription.current_period_start/end
-    if (subFromStripe) {
-      const subData: any = subFromStripe;
-
-      if (subData?.current_period_start) {
-        startDate = new Date(subData.current_period_start * 1000);
-      }
-      if (subData?.current_period_end) {
-        endDate = new Date(subData.current_period_end * 1000);
-      }
-    }
-
-    // 2) Fallback → invoice line period
-    const line: any = invoice.lines?.data?.[0];
-    if ((!startDate || !endDate) && line?.period) {
-      if (!startDate && line.period.start)
-        startDate = new Date(line.period.start * 1000);
-
-      if (!endDate && line.period.end)
-        endDate = new Date(line.period.end * 1000);
-    }
-
-    // 3) Fallback → invoice.period_start/end
-    if (!startDate && invoice.period_start)
-      startDate = new Date(invoice.period_start * 1000);
-
-    if (!endDate && invoice.period_end)
-      endDate = new Date(invoice.period_end * 1000);
-
-    // ============ UPDATE SUBSCRIPTION IN DB ============= //
-
-    await this.prisma.subscription.upsert({
-      where: {
-        business_id_plan_id: { business_id: businessId, plan_id: planId },
-      },
-      create: {
-        business_id: businessId,
-        plan_id: planId,
-        status: 'ACTIVE',
-        start_date: startDate,
-        end_date: endDate,
-        renewal_date: endDate,
-        stripe_subscription_id: stripeSubId ?? undefined,
-        stripe_customer_id: this.getStripeCustomerId(invoice),
-      },
-      update: {
-        status: 'ACTIVE',
-        start_date: startDate ?? undefined,
-        end_date: endDate ?? undefined,
-        renewal_date: endDate ?? undefined,
-        stripe_subscription_id: stripeSubId ?? undefined,
-        stripe_customer_id: this.getStripeCustomerId(invoice) ?? undefined,
-      },
-    });
-
-    const subscriptionDb = await this.prisma.subscription.findFirst({
-      where: { business_id: businessId, plan_id: planId },
-    });
-
-    const amount = (invoice.amount_paid ?? invoice.amount_due ?? 0) / 100;
-    const currency = invoice.currency?.toUpperCase() ?? 'USD';
-
-    const raw: any = invoice;
-    const paymentIntentId =
-      typeof raw.payment_intent === 'string'
-        ? raw.payment_intent
-        : raw.payment_intent?.id;
+    const amount = (invoice.amount_paid ?? 0) / 100;
 
     await this.prisma.paymentHistory.create({
       data: {
-        business_id: businessId,
-        plan_id: planId,
-        subscription_id: subscriptionDb?.id,
+        business_id: sub.business_id,
+        plan_id: sub.plan_id,
+        subscription_id: sub.id,
         amount,
-        currency,
-        payment_method: 'STRIPE',
-        invoice_url: invoice.hosted_invoice_url ?? undefined,
+        currency: invoice.currency ?? 'usd',
+        payment_method: 'card',
         status: 'PAID',
+        invoice_url: invoice.hosted_invoice_url ?? null,
         stripe_invoice_id: invoice.id,
-        stripe_payment_intent_id: paymentIntentId,
       },
     });
 
-    this.logger.log(
-      `💰 Invoice Paid → business=${businessId}, plan=${planId}, amount=${amount}`,
-    );
+    const period = invoice.lines.data[0].period;
+    const renewalDate = new Date(period.end * 1000);
+
+    await this.prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        status: 'ACTIVE',
+        renewal_date: renewalDate,
+      },
+    });
+
+    this.logger.log(`💰 Payment recorded business=${sub.business_id}`);
   }
 
-  // ==============================================================
-  // 5) INVOICE PAYMENT FAILED
-  // ==============================================================
-  private async invoicePaymentFailed(event: Stripe.Event) {
-    const invoice = event.data.object as Stripe.Invoice;
+  // ---------------------------
+  // PAYMENT FAILED
+  // ---------------------------
+  private async invoiceFailed(event: any) {
+    const invoice = event.data.object;
 
-    let { businessId, planId } = this.getMetadata(invoice);
-    const stripeSubId = this.getInvoiceSubscriptionId(invoice);
+    const sub = await this.prisma.subscription.findFirst({
+      where: { stripe_subscription_id: invoice.subscription },
+    });
 
-    // fallback → subscription metadata
-    if (stripeSubId && (!businessId || !planId)) {
-      try {
-        const sub = await this.stripe.subscriptions.retrieve(stripeSubId);
-        const m = sub.metadata || {};
-        if (!businessId && m.businessId) businessId = Number(m.businessId);
-        if (!planId && m.planId) planId = Number(m.planId);
-      } catch {}
-    }
-
-    // fallback → database
-    if ((!businessId || !planId) && stripeSubId) {
-      const found = await this.findSubscriptionByStripeId(stripeSubId);
-      if (found) {
-        businessId = businessId ?? found.business_id;
-        planId = planId ?? found.plan_id;
-      }
-    }
-
-    if (!businessId || !planId) {
-      this.logger.warn(`⚠️ invoice.payment_failed missing business/plan`);
-      return;
-    }
-
-    const amount = (invoice.amount_due ?? 0) / 100;
-    const currency = invoice.currency?.toUpperCase() ?? 'USD';
+    if (!sub) return;
 
     await this.prisma.paymentHistory.create({
       data: {
-        business_id: businessId,
-        plan_id: planId,
-        amount,
-        currency,
-        payment_method: 'STRIPE',
-        invoice_url: invoice.hosted_invoice_url ?? undefined,
+        business_id: sub.business_id,
+        plan_id: sub.plan_id,
+        subscription_id: sub.id,
+        amount: (invoice.amount_due ?? 0) / 100,
+        currency: invoice.currency ?? 'usd',
+        payment_method: 'card',
         status: 'FAILED',
         stripe_invoice_id: invoice.id,
       },
     });
 
-    await this.prisma.subscription.updateMany({
-      where: { business_id: businessId, plan_id: planId },
+    await this.prisma.subscription.update({
+      where: { id: sub.id },
       data: { status: 'PAST_DUE' },
     });
 
-    this.logger.log(
-      `⚠️ Invoice FAILED → business=${businessId}, plan=${planId}`,
-    );
+    this.logger.log(`⚠️ Payment FAILED business=${sub.business_id}`);
   }
 }
