@@ -6,7 +6,9 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -77,6 +79,29 @@ export class BillingController {
   @Roles('SUPER_ADMIN')
   async createPlan(@Body() dto: CreatePlanDto) {
     return this.billingService.createPlan(dto);
+  }
+
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN')
+  @Put('subscription/update-plan')
+  async updatePlan(@Body() body: any, @Req() req) {
+    console.log(req.body.userId);
+    const userId = parseInt(req.body.userId);
+
+    // Identify where ID exists
+
+    if (!userId) {
+      throw new BadRequestException('User ID missing in token');
+    }
+
+    return this.billingService.updateUserPlan(userId, body.planId);
+  }
+  // Cancel subscription for a business
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN')
+  @Post('subscription/:businessId/cancel')
+  async cancelSubscription(@Param('businessId') businessId: number) {
+    return this.billingService.cancelSubscription(Number(businessId));
   }
 
   // -------------------------------------------------------------------------

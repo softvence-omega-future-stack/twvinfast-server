@@ -3,6 +3,7 @@ import {
   Injectable,
   ForbiddenException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
@@ -243,6 +244,116 @@ export class BillingService {
     return {
       count: subscriptions.length,
       subscriptions,
+    };
+  }
+
+  // ------------------------------------------------------------
+  // USER — Change Current Plan (Upgrade/Downgrade)
+  // ------------------------------------------------------------
+  async updateUserPlan(userId: number, newPlanId: number) {
+    // Get business
+
+    const { businessId } = await this.getBusinessForUser(userId);
+
+    // Get current subscription from DB
+    const sub = await this.prisma.subscription.findFirst({
+      where: { business_id: businessId },
+    });
+
+    if (!sub) throw new NotFoundException('Subscription not found');
+
+    // Load new plan info
+    const newPlan = await this.prisma.plan.findUnique({
+      where: { id: newPlanId },
+    });
+
+    if (!newPlan || !newPlan.is_active) {
+      throw new BadRequestException('Selected plan is not active');
+    }
+
+    if (!newPlan.stripe_price_id) {
+      throw new BadRequestException('Selected plan has no Stripe price');
+    }
+
+    // STEP 1 — Update plan in Stripe
+    const updatedStripeSub = await this.stripe.subscriptions.update(
+      sub.stripe_subscription_id as any,
+      {
+        items: [
+          {
+            id: (
+              await this.stripe.subscriptionItems.list({
+                subscription: sub.stripe_subscription_id as any,
+              })
+            ).data[0].id,
+            price: newPlan.stripe_price_id, // NEW PLAN
+          },
+        ],
+        proration_behavior: 'create_prorations',
+      },
+    );
+
+    // STEP 2 — Update DB with new plan
+    await this.prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        plan_id: newPlanId,
+        // renewal_date: new Date(updatedStripeSub.current_period_end * 1000),
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Subscription plan updated successfully',
+      plan: newPlan.name,
+      // next_billing: new Date(updatedStripeSub.current_period_end * 1000),
+    };
+  }
+
+  // -------------------------------------------------------
+  // -------------------------------------------------------
+  // CANCEL SUBSCRIPTION API (OPTION 1 - cancel at period end)
+  // -------------------------------------------------------
+  async cancelSubscription(businessId: number) {
+    // 1) Find subscription
+    const sub = await this.prisma.subscription.findFirst({
+      where: { business_id: businessId },
+    });
+
+    if (!sub) {
+      throw new NotFoundException('Subscription not found for this business');
+    }
+
+    if (!sub.stripe_subscription_id) {
+      throw new NotFoundException('Stripe subscription not found');
+    }
+
+    // 2) Cancel subscription at the end of current billing cycle
+    const stripeCancel = await this.stripe.subscriptions.update(
+      sub.stripe_subscription_id,
+      {
+        cancel_at_period_end: true, // ← OPTION 1 (BEST)
+      },
+    );
+
+    // ❗ DO NOT set status = CANCELED in DB now
+    // User should still have access until period ends.
+    // Stripe webhook "customer.subscription.deleted" will send final cancel event.
+    // We can optionally mark "cancel_requested" if needed.
+
+    await this.prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        status: 'CANCELING', // ← Optional: showing user that cancel is scheduled
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Subscription will be canceled at period end.',
+      stripeStatus: stripeCancel.status,
+      cancel_at_period_end: stripeCancel.cancel_at_period_end,
+      // current_period_end: new Date(stripeCancel.current_period_end * 1000),
     };
   }
 }
