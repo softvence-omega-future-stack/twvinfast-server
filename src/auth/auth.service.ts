@@ -1,10 +1,10 @@
-
 import {
   Injectable,
   ConflictException,
   UnauthorizedException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -101,37 +101,99 @@ export class AuthService {
   // ------------------------------------------------------------------
   // 2) EMPLOYEE SIGNUP (Admin creates Employees)
   // ------------------------------------------------------------------
+  // async createEmployee(adminUserId: number, dto: CreateUserDto) {
+  //   const admin = await this.prisma.user.findUnique({
+  //     where: { id: adminUserId },
+  //   });
+  //   //  if (!admin || !admin.business_id)
+  //   if (!admin) {
+  //     throw new ForbiddenException('Admin authentication required');
+  //   }
+
+  //   const exists = await this.prisma.user.findUnique({
+  //     where: { email: dto.email },
+  //   });
+
+  //   if (exists) throw new ConflictException('Email already exists');
+
+  //   const hashed = await bcrypt.hash(dto.password, 10);
+  //   const role = await this.ensureRole('USER');
+
+  //   const user = await this.prisma.user.create({
+  //     data: {
+  //       name: dto.name,
+  //       email: dto.email,
+  //       password_hash: hashed,
+  //       role_id: role.id,
+  //       business_id: admin.business_id, // inherit business
+  //     },
+  //     include: { role: true },
+  //   });
+
+  //   return {
+  //     message: 'Employee created',
+  //     user,
+  //   };
+  // }
+
+  // 2) EMPLOYEE SIGNUP (Admin creates Employees)
   async createEmployee(adminUserId: number, dto: CreateUserDto) {
     const admin = await this.prisma.user.findUnique({
       where: { id: adminUserId },
     });
-    //  if (!admin || !admin.business_id)
+
     if (!admin) {
       throw new ForbiddenException('Admin authentication required');
+    }
+
+    if (!admin.business_id) {
+      throw new BadRequestException(
+        'Admin must belong to a business before creating employees.',
+      );
     }
 
     const exists = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    if (exists) throw new ConflictException('Email already exists');
+    if (exists) {
+      throw new ConflictException('Email already exists');
+    }
 
     const hashed = await bcrypt.hash(dto.password, 10);
     const role = await this.ensureRole('USER');
 
+    // CREATE USER
     const user = await this.prisma.user.create({
       data: {
         name: dto.name,
         email: dto.email,
         password_hash: hashed,
         role_id: role.id,
-        business_id: admin.business_id, // inherit business
+        business_id: admin.business_id, // inherits business from admin
       },
       include: { role: true },
     });
 
+    // --------------------------------------------------
+    // 🚀 CREATE DEFAULT MAILBOX FOR NEWLY CREATED USER
+    // --------------------------------------------------
+    await this.prisma.mailbox.create({
+      data: {
+        business_id: admin.business_id, // safe now (never null)
+        user_id: user.id,
+        provider: 'SMTP',
+        email_address: dto.email,
+        imap_host: undefined,
+        imap_port: undefined,
+        smtp_host: undefined,
+        smtp_port: undefined,
+        is_ssl: true,
+      },
+    });
+
     return {
-      message: 'Employee created',
+      message: 'Employee created with default mailbox',
       user,
     };
   }
