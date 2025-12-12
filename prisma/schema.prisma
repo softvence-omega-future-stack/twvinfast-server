@@ -150,6 +150,10 @@ model Mailbox {
   imap_host     String?
   imap_port     Int?
   smtp_host     String?
+  imap_password String?   // ⬅️ MUST ADD
+  smtp_password String?   // ⬅️ MUST ADD
+
+
   smtp_port     Int?
   is_ssl        Boolean? @default(true)
   created_at    DateTime @default(now())

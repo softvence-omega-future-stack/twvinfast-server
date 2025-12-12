@@ -255,6 +255,8 @@ export class UserService {
           imap_port: dto.imap_port ?? undefined,
           smtp_host: dto.smtp_host ?? undefined,
           smtp_port: dto.smtp_port ?? undefined,
+          imap_password: dto.imap_password ?? undefined,
+          smtp_password: dto.smtp_password ?? undefined,  
           is_ssl: dto.is_ssl ?? undefined,
         },
       });

@@ -9,13 +9,15 @@ import { BillingModule } from './billing/billing.module';
 import { StripeModule } from './stripe/stripe.module';
 import { ConfigModule } from '@nestjs/config';
 import { UserModule } from './user/user.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true, // ✅ ensures .env loads everywhere
     }),
-
+    ScheduleModule.forRoot(),
+    // Mail Module
     PrismaModule,
     UserModule,
     AuthModule,

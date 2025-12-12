@@ -26,6 +26,13 @@ export class UpdateMailboxDto {
   smtp_port?: number | null;
 
   @IsOptional()
+  @IsString()
+  imap_password?: string;
+
+  @IsOptional()
+  @IsString()
+  smtp_password?: string;
+  @IsOptional()
   @IsBoolean()
   is_ssl?: boolean | null;
 }
