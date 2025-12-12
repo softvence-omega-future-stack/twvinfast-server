@@ -12,6 +12,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/strategies/jwt-auth.guard';
 import { RolesGuard } from './auth/strategies/roles.guard';
 import { EmailModule } from './mail/mail.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EmailModule } from './mail/mail.module';
     ConfigModule.forRoot({ isGlobal: true }),
     BillingModule,
     StripeModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

@@ -16,13 +16,20 @@ async function testIMAP() {
     await client.connect();
     console.log('✅ IMAP connected successfully!');
 
+    // 🔥 1️⃣ LIST ALL MAILBOXES / SUBFOLDERS
+    console.log('\n📁 Listing all mailboxes (subfolders)...');
+    for await (let mailbox of await client.list()) {
+      console.log(`- ${mailbox.path}`);
+    }
+    console.log('📁 Mailbox listing complete.\n');
+
+    // 🔓 2️⃣ OPEN INBOX
     const lock = await client.getMailboxLock('INBOX');
     console.log('📂 INBOX opened');
 
-    // 1️⃣ SEARCH UNSEEN MESSAGES
+    // 3️⃣ SEARCH UNSEEN MESSAGES
     const unseen = await client.search({ seen: false });
 
-    // FIX: Type guard — check if search returned false
     if (!unseen || unseen.length === 0) {
       console.log('📭 No unseen messages found.');
       lock.release();
@@ -32,11 +39,11 @@ async function testIMAP() {
 
     console.log(`🔍 Found ${unseen.length} unseen messages`);
 
-    // 2️⃣ Take last 10 unseen messages
+    // 4️⃣ Take last 10 unseen messages
     const last10 = unseen.slice(-10);
     console.log(`📨 Fetching last ${last10.length} unseen messages...\n`);
 
-    // 3️⃣ FETCH SUBJECT + FROM + DATE
+    // 5️⃣ FETCH SUBJECT + FROM + DATE
     for await (const msg of client.fetch(last10, { envelope: true })) {
       const env = msg.envelope || {};
 
