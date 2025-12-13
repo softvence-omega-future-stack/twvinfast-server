@@ -7,41 +7,45 @@ import {
 import { PrismaService } from 'prisma/prisma.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ImapFlow } from 'imapflow';
+import { isProfessionalHumanEmail } from '../utils/email-filter';
 
 @Injectable()
 export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
   private logger = new Logger('IMAP-SYNC');
   private clients: Map<number, ImapFlow> = new Map();
+  private syncing = new Set<number>(); // 🔒 sync lock
 
   constructor(private prisma: PrismaService) {}
 
+  /* ===============================
+     APP LIFECYCLE
+  =============================== */
+
   async onModuleInit() {
-    this.logger.log('🚀 Auto IMAP Sync Engine Starting...');
-    await this.loadAllMailboxes();
+    this.logger.log('🚀 IMAP Sync Engine Started');
+    await this.loadMailboxes();
   }
 
   async onModuleDestroy() {
-    this.logger.warn('🔌 Stopping IMAP sync engine...');
     for (const client of this.clients.values()) {
       await client.logout().catch(() => null);
     }
   }
 
-  /** Load all mailboxes from DB and start IMAP connections */
-  private async loadAllMailboxes() {
+  /* ===============================
+     MAILBOX BOOTSTRAP
+  =============================== */
+
+  private async loadMailboxes() {
     const mailboxes = await this.prisma.mailbox.findMany();
-
-    this.logger.log(`📦 Loaded ${mailboxes.length} mailboxes`);
-
     for (const box of mailboxes) {
       await this.startMailbox(box);
     }
   }
 
-  /** Start IMAP client for a mailbox */
   private async startMailbox(box: any) {
     if (!box.imap_password) {
-      this.logger.error(`❌ Missing IMAP password for mailbox ID ${box.id}`);
+      this.logger.error(`❌ Missing IMAP password → ${box.email_address}`);
       return;
     }
 
@@ -51,65 +55,59 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
       secure: box.is_ssl ?? true,
       auth: {
         user: box.email_address,
-        pass: box.imap_password,
+        pass: box.imap_password, // Gmail → App Password
       },
       logger: false,
-      tls: { rejectUnauthorized: false },
       connectionTimeout: 20000,
+      tls: { rejectUnauthorized: false },
     });
 
-    // Client error event
+    client.on('exists', () => {
+      this.logger.debug(`📥 New mail detected → ${box.email_address}`);
+      this.syncInbox(box.id);
+    });
+
     client.on('error', (err) => {
       this.logger.error(
-        `❌ IMAP Error [${box.email_address}] → ${err.message}`,
+        `❌ IMAP error → ${box.email_address} | ${err?.message || err}`,
       );
       this.reconnect(box);
     });
 
-    // IMAP closed event
     client.on('close', () => {
-      this.logger.warn(`⚠️ IMAP Closed → ${box.email_address}`);
+      this.logger.warn(`⚠️ IMAP closed → ${box.email_address}`);
       this.reconnect(box);
-    });
-
-    // IMAP IDLE → REAL-TIME new email detection
-    client.on('exists', () => {
-      this.logger.log(`📥 New email detected → ${box.email_address}`);
-      this.syncInbox(box.id);
     });
 
     try {
       await client.connect();
       await client.mailboxOpen('INBOX');
 
-      this.logger.log(`✅ IMAP Connected → ${box.email_address}`);
       this.clients.set(box.id, client);
-
-      // Initial sync
       await this.syncInbox(box.id);
+
+      this.logger.log(`✅ IMAP Connected → ${box.email_address}`);
     } catch (err) {
-      this.logger.error(`❌ IMAP Login Failed (${box.email_address})`);
-      this.logger.error(err);
+      this.logger.error(`❌ IMAP connection failed → ${box.email_address}`);
+      this.logger.error(err?.message || err);
       this.reconnect(box);
     }
   }
 
-  /** Auto reconnect after failure */
   private reconnect(box: any) {
-    this.logger.warn(`🔁 Reconnecting in 15 seconds → ${box.email_address}`);
-    setTimeout(() => this.startMailbox(box), 15000);
+    this.logger.warn(`🔁 Reconnecting in 30s → ${box.email_address}`);
+    setTimeout(() => this.startMailbox(box), 30000);
   }
 
-  /** RUN EVERY 30 SECONDS — Ensures no mailbox is dropped */
+  /* ===============================
+     HEALTH CHECK
+  =============================== */
+
   @Cron(CronExpression.EVERY_30_SECONDS)
   async ensureHealthyConnections() {
-    this.logger.log('🩺 Checking IMAP connections...');
-
     const mailboxes = await this.prisma.mailbox.findMany();
-
     for (const box of mailboxes) {
       const client = this.clients.get(box.id);
-
       if (!client || !client.usable) {
         this.logger.warn(`🛑 Restarting IMAP → ${box.email_address}`);
         await this.startMailbox(box);
@@ -117,53 +115,94 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** MAIN FUNCTION → Sync emails from IMAP INBOX */
+  /* ===============================
+     MAIN SYNC (LAST 10 ONLY)
+  =============================== */
+
   async syncInbox(mailbox_id: number) {
-    const box = await this.prisma.mailbox.findUnique({
-      where: { id: mailbox_id },
-    });
+    if (this.syncing.has(mailbox_id)) return;
+    this.syncing.add(mailbox_id);
 
-    if (!box) return;
+    try {
+      const box = await this.prisma.mailbox.findUnique({
+        where: { id: mailbox_id },
+      });
+      if (!box) return;
 
-    const client = this.clients.get(mailbox_id);
+      const client = this.clients.get(mailbox_id);
+      if (!client?.usable) return;
 
-    if (!client?.usable) {
-      this.logger.warn(`❌ IMAP client not ready for ${box.email_address}`);
-      return;
-    }
+      await client.mailboxOpen('INBOX');
 
-    await client.mailboxOpen('INBOX');
+      const status = await client.status('INBOX', { messages: true });
+      const total = status.messages || 0;
+      if (total === 0) return;
 
-    const messages = await client.fetch('1:*', {
-      uid: true,
-      envelope: true,
-      source: true,
-    });
+      const start = Math.max(total - 9, 1);
+      const range = `${start}:${total}`;
 
-    for await (const msg of messages) {
-      await this.processEmail(box, msg);
+      const messages = await client.fetch(range, {
+        uid: true,
+        envelope: true,
+        source: true,
+      });
+
+      for await (const msg of messages) {
+        await this.processEmail(box, msg);
+      }
+    } finally {
+      this.syncing.delete(mailbox_id);
     }
   }
 
-  /** Save new email to DB */
-  private async processEmail(box: any, msg: any) {
-    const message_id = msg.envelope.messageId;
+  /* ===============================
+     PROCESS SINGLE EMAIL
+  =============================== */
 
-    const existing = await this.prisma.email.findFirst({
-      where: { message_id },
+  private async processEmail(box: any, msg: any) {
+    const uid = msg.uid;
+    if (!uid) return;
+
+    // 🔒 UID BASED DEDUP
+    const exists = await this.prisma.email.findFirst({
+      where: {
+        mailbox_id: box.id,
+        imap_uid: uid,
+      },
+    });
+    if (exists) return;
+
+    const fromObj = msg.envelope.from?.[0];
+    const fromEmail = fromObj?.address?.toLowerCase();
+    const fromName = fromObj?.name ?? 'Unknown';
+
+    if (!fromEmail || !isProfessionalHumanEmail(fromEmail)) return;
+
+    // 👤 Customer
+    const customer = await this.prisma.customer.upsert({
+      where: {
+        business_email_unique: {
+          business_id: box.business_id,
+          email: fromEmail,
+        },
+      },
+      update: { last_contact_at: new Date() },
+      create: {
+        business_id: box.business_id,
+        email: fromEmail,
+        name: fromName,
+        source: 'INBOUND_EMAIL',
+        last_contact_at: new Date(),
+      },
     });
 
-    if (existing) return; // avoid duplicates
-
     const subject = msg.envelope.subject ?? '(no subject)';
-    const from = msg.envelope.from?.[0]?.address;
-    const to = msg.envelope.to?.map((x) => x.address) || [];
-    const html = msg.source.toString();
+    const bodyHtml = msg.source.toString();
 
-    // Create or update thread
     let thread = await this.prisma.emailThread.findFirst({
       where: {
         mailbox_id: box.id,
+        customer_id: customer.id,
         subject,
       },
     });
@@ -173,8 +212,8 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
         data: {
           business_id: box.business_id,
           mailbox_id: box.id,
+          customer_id: customer.id,
           subject,
-          customer_id: null,
           last_message_at: new Date(),
         },
       });
@@ -185,24 +224,22 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    // Save email
+    // 📩 SAVE EMAIL (NO message_id)
     await this.prisma.email.create({
       data: {
         business_id: box.business_id,
         mailbox_id: box.id,
         thread_id: thread.id,
 
-        message_id,
-        from_address: from,
-        to_addresses: to,
-        body_html: html,
+        imap_uid: uid,
+        from_address: fromEmail,
         subject,
-
+        body_html: bodyHtml,
         folder: 'INBOX',
         received_at: new Date(),
       },
     });
 
-    this.logger.log(`💾 Saved email → ${subject}`);
+    this.logger.log(`✅ Saved email UID ${uid} → ${fromEmail}`);
   }
 }

@@ -60,44 +60,7 @@ enum HallucinationStatus {
   DISMISSED
 }
 
-///////////////////////////////
-// BUSINESS (TENANT)
-///////////////////////////////
 
-// model Business {
-//   id         Int      @id @default(autoincrement())
-//   name       String
-//   email      String?
-//   website    String?
-//   status     String?  @default("ACTIVE")
-//   created_at DateTime @default(now())
-//   updated_at DateTime @updatedAt
-
-//   // Stripe Billing
-//   stripe_customer_id String?
-
-//   // Relations
-//   users         User[]
-//   mailboxes     Mailbox[]
-//   threads       EmailThread[]
-//   emails        Email[]
-//   customers     Customer[]
-//   opportunities Opportunity[]
-//   integrations  Integration[]
-
-//   // AI
-//   aiTraining     AiTrainingData[]
-//   aiReplies      AiGeneratedReply[]
-//   hallucinations AiHallucinationReport[]
-
-//   // Billing
-//   subscriptions Subscription[]
-//   payments      PaymentHistory[]
-// }
-
-///////////////////////////////
-// ROLE & USER
-///////////////////////////////
 
 model Role {
   id          Int     @id @default(autoincrement())
@@ -190,28 +153,8 @@ model EmailThread {
   updated_at DateTime @updatedAt
 }
 
-// OLD VERSION (kept only for history, but commented out)
-//
-// model EmailThread {
-//   id              Int       @id @default(autoincrement())
-//   business_id     Int
-//   mailbox_id      Int
-//   customer_id     Int?
-//   subject         String?
-//   last_message_at DateTime?
-//   created_at      DateTime  @default(now())
-//   updated_at      DateTime  @updatedAt
-//
-//   business Business  @relation(fields: [business_id], references: [id])
-//   mailbox  Mailbox   @relation(fields: [mailbox_id], references: [id])
-//   customer Customer? @relation(fields: [customer_id], references: [id])
-//
-//   emails Email[]
-// }
 
-///////////////////////////////
-// EMAIL
-///////////////////////////////
+///////////////
 
 model Email {
   id          Int  @id @default(autoincrement())
@@ -219,8 +162,8 @@ model Email {
   mailbox_id  Int
   thread_id   Int?
   user_id     Int?
+   imap_uid Int?
 
-  message_id    String?
   in_reply_to   String?
   from_address  String?
   to_addresses  Json?
@@ -245,8 +188,10 @@ model Email {
   insight   AIEmailInsight?
   aiActions AIAction[]
 
+
   aiReplies      AiGeneratedReply[]
   hallucinations AiHallucinationReport[]
+  @@unique([mailbox_id, imap_uid]) // 🔥 REAL PROTECTION
 }
 
 ///////////////////////////////

@@ -1,27 +1,19 @@
-// import { Controller, Param, ParseIntPipe, Post } from '@nestjs/common';
-// import { ImapService } from '../services/imap.service';
-
-// @Controller('mail')
-// export class ImapController {
-//   constructor(private readonly imapService: ImapService) {}
-
-//   // Manual sync from frontend button
-//   @Post('sync/:mailbox_id')
-//   async manualSync(@Param('mailbox_id', ParseIntPipe) mailbox_id: number) {
-//     await this.imapService.syncInbox(mailbox_id);
-//     return { success: true, mailbox_id };
-//   }
-// }
 import { Controller, Param, ParseIntPipe, Post } from '@nestjs/common';
-import { ImapService } from '../services/imap.service';
+import { ImapSyncService } from '../services/imap-sync.service';
 
 @Controller('mail')
 export class ImapController {
-  constructor(private readonly imapService: ImapService) {}
+  constructor(private readonly imapSyncService: ImapSyncService) {}
 
+  // 🔹 Manual sync trigger (Admin / Debug / Button click)
   @Post('sync/:mailbox_id')
   async manualSync(@Param('mailbox_id', ParseIntPipe) mailbox_id: number) {
-    await this.imapService.syncInbox(mailbox_id);
-    return { success: true, mailbox_id };
+    await this.imapSyncService.syncInbox(mailbox_id);
+
+    return {
+      success: true,
+      mailbox_id,
+      message: 'Mailbox synced successfully',
+    };
   }
 }
