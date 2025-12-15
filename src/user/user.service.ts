@@ -1,4 +1,3 @@
-
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
@@ -179,7 +178,8 @@ export class UserService {
 
   // USER-এর সব mailbox (সাধারণত ১টা, কিন্তু future-proof)
   async getMyMailboxes(userId: number) {
-    return this.prisma.mailbox.findMany({
+    console.log(userId);
+    return this.prisma.mailbox.findFirst({
       where: { user_id: userId },
     });
   }
@@ -219,7 +219,7 @@ export class UserService {
           smtp_host: dto.smtp_host ?? undefined,
           smtp_port: dto.smtp_port ?? undefined,
           imap_password: dto.imap_password ?? undefined,
-          smtp_password: dto.smtp_password ?? undefined,  
+          smtp_password: dto.smtp_password ?? undefined,
           is_ssl: dto.is_ssl ?? undefined,
         },
       });

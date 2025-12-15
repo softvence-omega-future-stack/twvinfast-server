@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 
@@ -11,10 +10,17 @@ import { MailService } from './services/mail.service';
 import { MailboxController } from './controllers/mailbox.controller';
 import { MailboxService } from './services/mailbox.service';
 import { ImapSyncService } from './services/imap-sync.service';
+import { SmtpController } from './controllers/smtp.controller';
+import { SmtpService } from './services/smtp.service';
 
 @Module({
   imports: [],
-  controllers: [MailboxController, ThreadController, EmailController],
+  controllers: [
+    MailboxController,
+    ThreadController,
+    EmailController,
+    SmtpController,
+  ],
   providers: [
     PrismaService,
     MailService,
@@ -22,7 +28,14 @@ import { ImapSyncService } from './services/imap-sync.service';
     EmailService,
     MailboxService,
     ImapSyncService,
+    SmtpService,
   ],
-  exports: [ImapSyncService, MailService, ThreadService, EmailService],
+  exports: [
+    ImapSyncService,
+    MailService,
+    ThreadService,
+    EmailService,
+    SmtpService,
+  ],
 })
 export class EmailModule {}

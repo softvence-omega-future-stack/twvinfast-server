@@ -58,7 +58,7 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @Get('me/mailbox')
   getMyMailbox(@Req() req) {
-    return this.userService.getMyMailboxes(req.user.id);
+    return this.userService.getMyMailboxes(req.user.sub);
   }
 
   // USER: Update My IMAP / SMTP Settings

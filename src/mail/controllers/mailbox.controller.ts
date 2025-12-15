@@ -9,7 +9,6 @@ import {
   Post,
 } from '@nestjs/common';
 
-
 import { MailboxService } from '../services/mailbox.service';
 import { UpdateMailboxDto } from '../dto/update-mailbox.dto';
 import { CreateMailboxDto } from '../dto/create-mailbox.dto';

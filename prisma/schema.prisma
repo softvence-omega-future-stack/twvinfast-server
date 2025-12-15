@@ -19,6 +19,11 @@ enum EmailFolder {
   SPAM
 }
 
+enum EmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
 enum OpportunityStage {
   LEAD
   PROPOSAL
@@ -111,11 +116,12 @@ model Mailbox {
   provider      String
   email_address String
   imap_host     String?
-  imap_port     Int?
+  imapstates_port     Int?
   smtp_host     String?
   imap_password String?   // ⬅️ MUST ADD
   smtp_password String?   // ⬅️ MUST ADD
 
+  imap_port     Int?
 
   smtp_port     Int?
   is_ssl        Boolean? @default(true)
@@ -139,13 +145,11 @@ model EmailThread {
   customer_id     Int?
   subject         String
   last_message_at DateTime
+  last_message_id String?
+  references      String?
+    emails   Email[]
 
-  // Thread states
   is_archived Boolean @default(false)
-
-  // Relations
-  // emails   Email[]
-  // mailbox  Mailbox   @relation(fields: [mailbox_id], references: [id])
   business Business  @relation(fields: [business_id], references: [id])
   customer Customer? @relation(fields: [customer_id], references: [id])
 
@@ -163,7 +167,6 @@ model Email {
   thread_id   Int?
   user_id     Int?
    imap_uid Int?
-
   in_reply_to   String?
   from_address  String?
   to_addresses  Json?
@@ -173,17 +176,16 @@ model Email {
   body_html     String?
   body_text     String?
   folder        EmailFolder?
+  message_id  String?
+  references  String?
+  received_at DateTime?
+  sent_at     DateTime?
+  direction     EmailDirection? // Added direction field
   is_read       Boolean?     @default(false)
-  is_starred    Boolean?     @default(false)
-  received_at   DateTime?
-  sent_at       DateTime?
-  created_at    DateTime     @default(now())
-  updated_at    DateTime     @updatedAt
-
   business Business @relation(fields: [business_id], references: [id])
-  // mailbox  Mailbox     @relation(fields: [mailbox_id], references: [id])
-  // thread   EmailThread @relation(fields: [thread_id], references: [id])
   user     User?    @relation(fields: [user_id], references: [id])
+  
+  thread   EmailThread? @relation(fields: [thread_id], references: [id])
 
   insight   AIEmailInsight?
   aiActions AIAction[]
@@ -191,7 +193,7 @@ model Email {
 
   aiReplies      AiGeneratedReply[]
   hallucinations AiHallucinationReport[]
-  @@unique([mailbox_id, imap_uid]) // 🔥 REAL PROTECTION
+  @@unique([mailbox_id, imap_uid]) 
 }
 
 ///////////////////////////////
