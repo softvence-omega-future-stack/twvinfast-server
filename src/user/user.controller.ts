@@ -9,8 +9,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UserService } from './user.service';
-import { UpdateMailboxDto } from './dto/update-mailbox.dto';
+import {
+  UpdateAdminMailboxDto,
+  UpdateMailboxDto,
+} from './dto/update-mailbox.dto';
 import { JwtAuthGuard } from 'src/auth/strategies/jwt-auth.guard';
+import { UpdateProfileDto } from './dto/update-self-profile.dto';
+import { RolesGuard } from 'src/auth/strategies/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('users')
 export class UserController {
@@ -38,6 +44,13 @@ export class UserController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: any) {
     return this.userService.updateUser(Number(id), dto);
+  }
+  //User
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/profile')
+  updateMyProfile(@Req() req, @Body() dto: UpdateProfileDto) {
+    const userId = Number(req.user.sub);
+    return this.userService.updateMyProfile(userId, dto);
   }
 
   // -----------------------------------------
@@ -68,5 +81,19 @@ export class UserController {
     const userId = Number(req.user.sub);
     3;
     return this.userService.upsertMyPrimaryMailbox(userId, dto);
+  }
+
+  // -----------------------------------------
+  // ADMIN: Update User's IMAP / SMTP Settings
+  // -----------------------------------------
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Patch('super-admin/mailbox')
+  upsertUserPrimaryMailboxByAdmin(
+    @Req() req,
+    @Body() dto: UpdateAdminMailboxDto,
+  ) {
+    const userId = Number(req.user.sub);
+    return this.userService.upsertAdminPrimaryMailbox(userId, dto);
   }
 }

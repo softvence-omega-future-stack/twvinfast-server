@@ -18,6 +18,17 @@ export class CreateUserDto {
   @MinLength(6)
   password: string;
 
+  @IsOptional()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  timezone?: string;
+
+  @IsOptional()
+  @IsString()
+  email_signature?: string;
+
   // business_id will be injected automatically from the Admin's account
   @IsOptional()
   business_id?: number;

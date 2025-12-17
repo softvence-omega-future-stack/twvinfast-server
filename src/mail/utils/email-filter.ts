@@ -1,47 +1,47 @@
 const BLOCKED_KEYWORDS = [
   'noreply',
   'no-reply',
+  'donotreply',
   'notification',
+  'notifications',
   'mailer',
-  'facebook',
-  'meta',
-  'google',
-  'amazon',
-  'stripe',
-  'paypal',
-  'linkedin',
-  'twitter',
-  'instagram',
   'newsletter',
   'promo',
+  'marketing',
+  'facebookmail',
+  'linkedin',
+  'instagram',
+  'twitter',
+  'x.com',
+  'amazonses',
 ];
 
-const BLOCKED_LOCAL_PARTS = [
-  'info',
-  'support',
-  'admin',
-  'billing',
-  'help',
-  'contact',
-  'sales',
-  'service',
-];
-
-export function isProfessionalHumanEmail(email: string): boolean {
-  if (!email) return false;
+export function isProfessionalHumanEmail(email: string): {
+  isHuman: boolean;
+  reason?: string;
+} {
+  if (!email) return { isHuman: false, reason: 'empty' };
 
   const lower = email.toLowerCase();
-
-  if (BLOCKED_KEYWORDS.some((k) => lower.includes(k))) return false;
-
   const [local, domain] = lower.split('@');
-  if (!local || !domain) return false;
+  if (!local || !domain) {
+    return { isHuman: false, reason: 'invalid_format' };
+  }
 
-  if (BLOCKED_LOCAL_PARTS.includes(local)) return false;
+  // 🔴 Block obvious system / promo mails (like your example)
+  if (BLOCKED_KEYWORDS.some((k) => lower.includes(k))) {
+    return { isHuman: false, reason: 'blocked_keyword' };
+  }
 
-  if (!/^[a-z]+([._]?[a-z]+)*$/.test(local)) return false;
+  // ✅ allow normal modern emails (numbers, dots, underscores)
+  if (!/^[a-z0-9._+-]+$/.test(local)) {
+    return { isHuman: false, reason: 'invalid_local' };
+  }
 
-  if (!domain.includes('.')) return false;
+  // basic domain sanity
+  if (!domain.includes('.')) {
+    return { isHuman: false, reason: 'invalid_domain' };
+  }
 
-  return true;
+  return { isHuman: true };
 }

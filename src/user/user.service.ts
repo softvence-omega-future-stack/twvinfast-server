@@ -148,24 +148,22 @@ export class UserService {
 
   // --------------------------
   // SELF PROFILE UPDATE (optional – যদি আগে যুক্ত করো)
-  // --------------------------
-  async updateSelf(id: number, data: any) {
-    const updateData: any = {};
+  async updateMyProfile(userId: number, dto: any) {
+    const data: any = {};
 
-    if (data.name) updateData.name = data.name;
+    if (dto.name) data.name = dto.name;
+    if (dto.email) data.email = dto.email; // চাইলে remove করতে পারো
+    if (dto.phone) data.phone = dto.phone;
+    if (dto.timezone) data.timezone = dto.timezone;
+    if (dto.email_signature) data.email_signature = dto.email_signature;
 
-    if (data.password) {
-      updateData.password_hash = await bcrypt.hash(data.password, 10);
-    }
-
-    if (data.two_factor_enabled !== undefined) {
-      updateData.two_factor_enabled = data.two_factor_enabled;
+    if (dto.password) {
+      data.password_hash = await bcrypt.hash(dto.password, 10);
     }
 
     const updated = await this.prisma.user.update({
-      where: { id },
-      data: updateData,
-      include: { role: true, business: true },
+      where: { id: userId },
+      data,
     });
 
     const { password_hash, ...clean } = updated;
@@ -242,6 +240,55 @@ export class UserService {
         smtp_host: dto.smtp_host ?? undefined,
         smtp_port: dto.smtp_port ?? undefined,
 
+        is_ssl: dto.is_ssl ?? true,
+      },
+    });
+  }
+  async upsertAdminPrimaryMailbox(userId: number, dto: UpdateMailboxDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // প্রতি user + business combo এর জন্য ১টা mailbox
+    const existing = await this.prisma.mailbox.findFirst({
+      where: {
+        user_id: userId,
+      },
+    });
+
+    // -------------------------------------------
+    // ⭐ UPDATE mailbox IF EXISTS
+    // -------------------------------------------
+    if (existing) {
+      return this.prisma.mailbox.update({
+        where: { id: existing.id },
+        data: {
+          provider: dto.provider ?? undefined,
+          email_address: dto.email_address ?? undefined,
+          smtp_host: dto.smtp_host ?? undefined,
+          smtp_port: dto.smtp_port ?? undefined,
+          smtp_password: dto.smtp_password ?? undefined,
+          is_ssl: dto.is_ssl ?? undefined,
+        },
+      });
+    }
+
+    // -------------------------------------------
+    // ⭐ CREATE mailbox IF NOT EXISTS
+    // -------------------------------------------
+    return this.prisma.mailbox.create({
+      data: {
+        business_id: 1,
+        user_id: userId,
+        provider: dto.provider ?? 'SMTP',
+        email_address: dto.email_address ?? user.email,
+        // Prisma optional fields → must be undefined to skip OR null if user sends null
+        smtp_host: dto.smtp_host ?? undefined,
+        smtp_port: dto.smtp_port ?? undefined,   
         is_ssl: dto.is_ssl ?? true,
       },
     });

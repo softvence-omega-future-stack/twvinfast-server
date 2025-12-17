@@ -36,3 +36,27 @@ export class UpdateMailboxDto {
   @IsBoolean()
   is_ssl?: boolean | null;
 }
+export class UpdateAdminMailboxDto {
+  @IsOptional()
+  @IsString()
+  provider?: string | null;
+
+  @IsOptional()
+  @IsString()
+  email_address?: string | null;
+
+  @IsOptional()
+  @IsString()
+  smtp_host?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  smtp_port?: number | null;
+
+  @IsOptional()
+  @IsString()
+  smtp_password?: string;
+  @IsOptional()
+  @IsBoolean()
+  is_ssl?: boolean | null;
+}

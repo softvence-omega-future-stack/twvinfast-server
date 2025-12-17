@@ -170,6 +170,9 @@ export class AuthService {
         email: dto.email,
         password_hash: hashed,
         role_id: role.id,
+        phone: dto.phone,
+        timezone: dto.timezone,
+        email_signature: dto.email_signature,
         business_id: admin.business_id, // inherits business from admin
       },
       include: { role: true },

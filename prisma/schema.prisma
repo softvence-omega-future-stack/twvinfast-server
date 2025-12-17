@@ -79,6 +79,9 @@ model User {
   id                 Int       @id @default(autoincrement())
   name               String
   email              String    @unique
+  phone              String?
+  timezone           String?   @default("UTC")
+  email_signature   String?
   password_hash      String
   status             String?   @default("ACTIVE")
   two_factor_enabled Boolean   @default(false)
