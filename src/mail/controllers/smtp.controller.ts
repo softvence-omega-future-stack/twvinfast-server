@@ -15,6 +15,16 @@ export class SmtpController {
   constructor(private readonly smtpService: SmtpService) {}
 
   @Post('send')
+  @UseInterceptors(FilesInterceptor('files', 10))
+  async sendMail(
+    @Body('data') data: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    const payload = JSON.parse(data);
+    return this.smtpService.sendMail({ ...payload, files });
+  }
+  //
+  @Post('draft')
   @UseInterceptors(
     FilesInterceptor('files', 10, {
       storage: diskStorage({
@@ -26,16 +36,12 @@ export class SmtpController {
       }),
     }),
   )
-  async sendMail(
+  async saveDraft(
     @Body('data') data: string,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-
-    // added comment
-    // 🔥 data আসে string হিসেবে → parse করতেই হবে
     const payload = JSON.parse(data);
-
-    return this.smtpService.sendMail({
+    return this.smtpService.saveDraft({
       ...payload,
       files,
     });

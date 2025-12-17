@@ -1,4 +1,10 @@
-import { IsInt, IsNotEmpty, IsString, Validate } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Validate,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   ValidatorConstraint,
@@ -7,9 +13,7 @@ import {
 } from 'class-validator';
 
 @ValidatorConstraint({ name: 'EmailOrEmailArray', async: false })
-export class EmailOrEmailArrayConstraint
-  implements ValidatorConstraintInterface
-{
+export class EmailOrEmailArrayConstraint implements ValidatorConstraintInterface {
   validate(value: any) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,6 +37,11 @@ export class SendSmtpMailDto {
   @IsInt()
   @Type(() => Number)
   mailbox_id: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  draft_id?: number;
 
   @IsNotEmpty()
   @Validate(EmailOrEmailArrayConstraint)
