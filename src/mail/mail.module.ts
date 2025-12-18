@@ -12,6 +12,8 @@ import { MailboxService } from './services/mailbox.service';
 import { ImapSyncService } from './services/imap-sync.service';
 import { SmtpController } from './controllers/smtp.controller';
 import { SmtpService } from './services/smtp.service';
+import { ThreadLabelController } from './controllers/thread-label.controller';
+import { ThreadLabelService } from './services/thread-label.service';
 
 @Module({
   imports: [],
@@ -20,6 +22,7 @@ import { SmtpService } from './services/smtp.service';
     ThreadController,
     EmailController,
     SmtpController,
+    ThreadLabelController,
   ],
   providers: [
     PrismaService,
@@ -29,6 +32,7 @@ import { SmtpService } from './services/smtp.service';
     MailboxService,
     ImapSyncService,
     SmtpService,
+    ThreadLabelService,
   ],
   exports: [
     ImapSyncService,
@@ -36,6 +40,7 @@ import { SmtpService } from './services/smtp.service';
     ThreadService,
     EmailService,
     SmtpService,
+    ThreadLabelService,
   ],
 })
 export class EmailModule {}

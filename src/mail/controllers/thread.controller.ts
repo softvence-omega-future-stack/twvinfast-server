@@ -7,26 +7,49 @@ import {
   Query,
 } from '@nestjs/common';
 import { ThreadService } from '../services/thread.service';
+import { ThreadStatus } from '@prisma/client';
 
 @Controller('threads')
 export class ThreadController {
   constructor(private readonly threadService: ThreadService) {}
 
   /* ===============================
-     INBOX / THREAD LIST
+     THREAD LIST
   =============================== */
-
-  // GET /threads?mailbox_id=1
   @Get()
-  getThreads(@Query('mailbox_id', ParseIntPipe) mailbox_id: number) {
-    return this.threadService.getThreadsByMailbox(mailbox_id);
+  getThreads(
+    @Query('mailbox_id', ParseIntPipe) mailbox_id: number,
+    @Query('folder') folder?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: ThreadStatus,
+    @Query('tag') tag?: string, // label_id
+    @Query('sort') sort?: 'newest' | 'oldest',
+    @Query('page') page = '1',
+    @Query('limit') limit = '6',
+  ) {
+    return this.threadService.getThreadsByMailbox({
+      mailbox_id,
+      folder,
+      search,
+      status,
+      tag: tag ? Number(tag) : undefined,
+      sort,
+      page: Number(page),
+      limit: Number(limit),
+    });
   }
 
   /* ===============================
-     SINGLE THREAD (CONVERSATION)
+     SIDEBAR COUNTS
   =============================== */
+  @Get('counts')
+  getCounts(@Query('mailbox_id', ParseIntPipe) mailbox_id: number) {
+    return this.threadService.getThreadCounts(mailbox_id);
+  }
 
-  // GET /threads/12
+  /* ===============================
+     SINGLE THREAD
+  =============================== */
   @Get(':id')
   getThread(@Param('id', ParseIntPipe) id: number) {
     return this.threadService.getThreadWithEmails(id);
@@ -35,14 +58,11 @@ export class ThreadController {
   /* ===============================
      ARCHIVE / UNARCHIVE
   =============================== */
-
-  // PATCH /threads/12/archive
   @Patch(':id/archive')
   archive(@Param('id', ParseIntPipe) id: number) {
     return this.threadService.archiveThread(id);
   }
 
-  // PATCH /threads/12/unarchive
   @Patch(':id/unarchive')
   unarchive(@Param('id', ParseIntPipe) id: number) {
     return this.threadService.unarchiveThread(id);
@@ -51,14 +71,11 @@ export class ThreadController {
   /* ===============================
      READ / UNREAD
   =============================== */
-
-  // PATCH /threads/12/read
   @Patch(':id/read')
   markRead(@Param('id', ParseIntPipe) id: number) {
     return this.threadService.markThreadRead(id);
   }
 
-  // PATCH /threads/12/unread
   @Patch(':id/unread')
   markUnread(@Param('id', ParseIntPipe) id: number) {
     return this.threadService.markThreadUnread(id);

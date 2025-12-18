@@ -406,7 +406,7 @@ export class SmtpService {
         mailbox_id: mailbox.id,
         thread_id: threadId,
         from_address: mailbox.email_address,
-        subject: payload.subject,
+        subject: payload.subject!,
         body_html: payload.html,
         body_text: cleanEmailText(
           htmlToText(payload.html, { wordwrap: false }),
