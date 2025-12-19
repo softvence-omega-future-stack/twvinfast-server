@@ -7,43 +7,33 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { SmtpService } from '../services/smtp.service';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { mailMulterConfig } from 'src/config/multer.config';
 
 @Controller('mail/smtp')
 export class SmtpController {
   constructor(private readonly smtpService: SmtpService) {}
 
+  /* ============ SEND MAIL ============ */
   @Post('send')
-  @UseInterceptors(FilesInterceptor('files', 10))
+  @UseInterceptors(FilesInterceptor('files', 10, mailMulterConfig))
   async sendMail(
     @Body('data') data: string,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
     const payload = JSON.parse(data);
-    return this.smtpService.sendMail({ ...payload, files });
+    return this.smtpService.sendMail({
+      ...payload,
+      files,
+    });
   }
-  //
+  /* ============ SAVE DRAFT ============ */
   @Post('draft')
-  @UseInterceptors(
-    FilesInterceptor('files', 10, {
-      storage: diskStorage({
-        destination: './uploads/mail',
-        filename: (_req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, unique + extname(file.originalname));
-        },
-      }),
-    }),
-  )
+  @UseInterceptors(FilesInterceptor('files', 10, mailMulterConfig))
   async saveDraft(
     @Body('data') data: string,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
     const payload = JSON.parse(data);
-    return this.smtpService.saveDraft({
-      ...payload,
-      files,
-    });
+    return this.smtpService.saveDraft({ ...payload, files });
   }
 }

@@ -25,6 +25,7 @@ import { AdminModule } from './admin/admin.module';
     BillingModule,
     StripeModule,
     AdminModule,
+    
   ],
   controllers: [AppController],
   providers: [

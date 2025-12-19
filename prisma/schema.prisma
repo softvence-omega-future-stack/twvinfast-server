@@ -57,7 +57,7 @@ model Mailbox {
   threads       EmailThread[]
   business      Business      @relation(fields: [business_id], references: [id])
   user          User          @relation(fields: [user_id], references: [id])
-  labels        ThreadLabel[] // ✅ opposite relation
+  labels        ThreadLabel[]
 }
 
 model EmailThread {
@@ -81,7 +81,7 @@ model EmailThread {
   business          Business           @relation(fields: [business_id], references: [id])
   customer          Customer?          @relation(fields: [customer_id], references: [id])
   mailbox           Mailbox            @relation(fields: [mailbox_id], references: [id])
-  labels            EmailThreadLabel[] // ✅ opposite side
+  labels            EmailThreadLabel[]
 
   @@index([mailbox_id, is_archived, is_deleted])
 }
@@ -109,6 +109,7 @@ model Email {
   received_at    DateTime?
   sent_at        DateTime?
   created_at     DateTime                @default(now())
+  attachments   EmailAttachment[]
   aiActions      AIAction[]
   insight        AIEmailInsight?
   aiReplies      AiGeneratedReply[]
@@ -121,15 +122,27 @@ model Email {
   @@unique([mailbox_id, imap_uid])
   @@index([thread_id])
 }
-
-model ThreadLabel {
+model EmailAttachment {
   id         Int      @id @default(autoincrement())
-  mailbox_id Int
-  name       String
+  email_id   Int
+  file_name  String
+  file_path  String
+  mime_type  String
+  file_size  Int?
   created_at DateTime @default(now())
 
-  mailbox Mailbox            @relation(fields: [mailbox_id], references: [id])
-  threads EmailThreadLabel[] // pivot relation
+  email Email @relation(fields: [email_id], references: [id], onDelete: Cascade)
+
+  @@index([email_id])
+}
+
+model ThreadLabel {
+  id         Int                @id @default(autoincrement())
+  mailbox_id Int
+  name       String
+  created_at DateTime           @default(now())
+  threads    EmailThreadLabel[]
+  mailbox    Mailbox            @relation(fields: [mailbox_id], references: [id])
 
   @@unique([mailbox_id, name])
 }
@@ -137,9 +150,8 @@ model ThreadLabel {
 model EmailThreadLabel {
   thread_id Int
   label_id  Int
-
-  thread EmailThread @relation(fields: [thread_id], references: [id], onDelete: Cascade)
-  label  ThreadLabel @relation(fields: [label_id], references: [id], onDelete: Cascade)
+  label     ThreadLabel @relation(fields: [label_id], references: [id], onDelete: Cascade)
+  thread    EmailThread @relation(fields: [thread_id], references: [id], onDelete: Cascade)
 
   @@id([thread_id, label_id])
 }

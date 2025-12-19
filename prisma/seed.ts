@@ -211,7 +211,7 @@ async function main() {
 
   await seedPlan({
     id: 3,
-    name: 'Scale',
+    name: 'Pro',
     amount: 99,
     interval: 'month',
     email_limit: 20000,

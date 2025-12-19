@@ -5,11 +5,6 @@ export class UpdateProfileDto {
   @IsString()
   name?: string;
 
-  // ⚠️ email change optional (চাও তো block করা যাবে)
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-
   @IsOptional()
   @IsString()
   phone?: string;

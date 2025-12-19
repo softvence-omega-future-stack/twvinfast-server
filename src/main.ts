@@ -22,7 +22,8 @@ async function bootstrap() {
   app.use(bodyParser.urlencoded({ extended: true }));
 
   // ✅ Serve uploaded files (DigitalOcean server)
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });
 

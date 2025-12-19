@@ -1,19 +1,31 @@
 import * as nodemailer from 'nodemailer';
 
-export const createSmtpTransporter = () => {
-  if (!process.env.SMTP_HOST) {
-    throw new Error('SMTP env variables not set');
+/**
+ * DB (mailbox table) থেকে SMTP transporter বানায়
+ */
+export const createSmtpTransporterFromDb = (mailbox: {
+  smtp_host: string;
+  smtp_port: number;
+  smtp_password: string;
+  email_address: string;
+  is_ssl?: boolean | null;
+}) => {
+  if (
+    !mailbox.smtp_host ||
+    !mailbox.smtp_port ||
+    !mailbox.smtp_password ||
+    !mailbox.email_address
+  ) {
+    throw new Error('SMTP config missing in mailbox');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: false, // 587 = STARTTLS
+  return nodemailer.createTransport({
+    host: mailbox.smtp_host,
+    port: mailbox.smtp_port,
+    secure: mailbox.is_ssl ?? mailbox.smtp_port === 465, // 465 = SSL
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: mailbox.email_address,
+      pass: mailbox.smtp_password,
     },
   });
-
-  return transporter;
 };

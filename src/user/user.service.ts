@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from '../auth/dto/registerUser.dto';
@@ -31,35 +35,8 @@ export class UserService {
     return clean;
   }
 
-  // --------------------------
-  // CREATE USER (ADMIN/SUPER ADMIN USE)
-  // --------------------------
-  // async createUser(dto: CreateUserDto) {
-  //   const hashed = await bcrypt.hash(dto.password, 10);
-
-  //   const user = await this.prisma.user.create({
-  //     data: {
-  //       name: dto.name,
-  //       email: dto.email,
-  //       password_hash: hashed,
-  //       role: { connect: { id: dto.role_id } },
-  //       business: dto.business_id
-  //         ? { connect: { id: dto.business_id } }
-  //         : undefined,
-  //     },
-  //     include: {
-  //       role: true,
-  //       business: true,
-  //     },
-  //   });
-
-  //   const { password_hash, ...clean } = user;
-  //   return clean;
-  // }
-
-  // --------------------------
   // GET ALL USERS
-  // --------------------------
+
   async findAll() {
     const users = await this.prisma.user.findMany({
       orderBy: { created_at: 'desc' },
@@ -99,26 +76,13 @@ export class UserService {
   // UPDATE USER (ADMIN PANEL থেকে)
   // --------------------------
   async updateUser(id: number, data: any) {
-    if (data.password) {
-      data.password_hash = await bcrypt.hash(data.password, 10);
-      delete data.password;
-    }
-
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         name: data.name,
-        email: data.email,
         status: data.status,
         two_factor_enabled: data.two_factor_enabled,
-        last_login_at: data.last_login_at,
-        refreshToken: data.refreshToken,
         role: data.role_id ? { connect: { id: data.role_id } } : undefined,
-        business: data.business_id
-          ? { connect: { id: data.business_id } }
-          : data.business_id === null
-            ? { disconnect: true }
-            : undefined,
       },
       include: {
         role: true,
@@ -126,8 +90,7 @@ export class UserService {
       },
     });
 
-    const { password_hash, ...clean } = updated;
-    return clean;
+    return updated;
   }
 
   // --------------------------
@@ -152,13 +115,16 @@ export class UserService {
     const data: any = {};
 
     if (dto.name) data.name = dto.name;
-    if (dto.email) data.email = dto.email; // চাইলে remove করতে পারো
     if (dto.phone) data.phone = dto.phone;
     if (dto.timezone) data.timezone = dto.timezone;
     if (dto.email_signature) data.email_signature = dto.email_signature;
 
-    if (dto.password) {
-      data.password_hash = await bcrypt.hash(dto.password, 10);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
 
     const updated = await this.prisma.user.update({
@@ -166,8 +132,7 @@ export class UserService {
       data,
     });
 
-    const { password_hash, ...clean } = updated;
-    return clean;
+    return updated;
   }
 
   // ==============================
@@ -288,7 +253,7 @@ export class UserService {
         email_address: dto.email_address ?? user.email,
         // Prisma optional fields → must be undefined to skip OR null if user sends null
         smtp_host: dto.smtp_host ?? undefined,
-        smtp_port: dto.smtp_port ?? undefined,   
+        smtp_port: dto.smtp_port ?? undefined,
         is_ssl: dto.is_ssl ?? true,
       },
     });
