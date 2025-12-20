@@ -33,27 +33,47 @@ async function seedPlan(options: {
     features,
   } = options;
 
-  const envKey = `STRIPE_PRICE_${name.toUpperCase()}`;
+  //
+
+  const existingPlan = await prisma.plan.findUnique({
+    where: { id },
+  });
+
+  if (existingPlan?.stripe_price_id) {
+    console.log(`↪ Plan "${name}" already linked with Stripe, skipping create`);
+    return existingPlan;
+  }
+
+  const envKey = `STRIPE_PRICE_${name.toUpperCase().replace(/\s+/g, '_')}`;
+
   const priceId = process.env[envKey];
 
-  if (priceId) {
-    return prisma.plan.upsert({
-      where: { id },
-      update: {},
-      create: {
-        id,
-        name,
-        description: description ?? `${name} plan`,
-        price: amount,
-        interval,
-        currency: 'usd',
-        email_limit,
-        ai_credits,
-        features,
-        is_active: true,
-        stripe_price_id: priceId,
-      },
-    });
+  if (priceId && stripe) {
+    try {
+      await stripe.prices.retrieve(priceId);
+
+      return prisma.plan.upsert({
+        where: { id },
+        update: {},
+        create: {
+          id,
+          name,
+          description: description ?? `${name} plan`,
+          price: amount,
+          interval,
+          currency: 'usd',
+          email_limit,
+          ai_credits,
+          features,
+          is_active: true,
+          stripe_price_id: priceId,
+        },
+      });
+    } catch (e) {
+      console.warn(
+        `⚠ Invalid Stripe price (${priceId}) for ${name}, recreating...`,
+      );
+    }
   }
 
   if (stripe) {
@@ -229,7 +249,7 @@ async function main() {
     name: 'Starter Yearly',
     amount: 190, // example price: discount for annual billing
     interval: 'year',
-    email_limit: 500,
+    email_limit: 1000 * 12,
     ai_credits: 10000 * 12,
     features: {
       inbox_ai: true,

@@ -24,6 +24,7 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { RolesGuard } from 'src/auth/strategies/roles.guard';
 import { Public } from 'src/auth/decorators/public.decorator';
+import { UpdatePlanDto } from './dto/update-plan.dto';
 
 @Controller('billing')
 export class BillingController {
@@ -81,6 +82,16 @@ export class BillingController {
     return this.billingService.createPlan(dto);
   }
 
+  // -------------------------------------------------------------------------
+  // SUPER_ADMIN → Get All Plans
+  // -------------------------------------------------------------------------
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('plans')
+  async getAllPlans() {
+    return this.billingService.getAllPlans();
+  }
+
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN')
   @Put('subscription/update-plan')
@@ -102,6 +113,18 @@ export class BillingController {
   @Post('subscription/:businessId/cancel')
   async cancelSubscription(@Param('businessId') businessId: number) {
     return this.billingService.cancelSubscription(Number(businessId));
+  }
+
+  // -------------------------------------------------------------------------
+  // ADMIN → Update Own Plan (DB-only, Stripe-safe)
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Put('plan/:planId')
+  async updateClientPlan(
+    @Param('planId') planId: number,
+    @Body() dto: UpdatePlanDto,
+  ) {
+    return this.billingService.updateClientPlan(Number(planId), dto);
   }
 
   // -------------------------------------------------------------------------
@@ -134,5 +157,16 @@ export class BillingController {
     await this.billingWebhookService.handleEvent(event);
 
     return { received: true };
+  }
+
+  //
+  // -------------------------------------------------------------------------
+  // SUPER ADMIN → Get All Trial + Active Subscriptions
+  // -------------------------------------------------------------------------
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('subscriptions/active-trial')
+  async getAllActiveAndTrialSubs() {
+    return this.billingService.getAllActiveAndTrialSubscriptions();
   }
 }

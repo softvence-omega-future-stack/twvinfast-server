@@ -1,280 +1,4 @@
-// import { Injectable, Logger } from '@nestjs/common';
-// import Stripe from 'stripe';
-// import { PrismaService } from 'prisma/prisma.service';
-// import { StripeService } from 'src/stripe/stripe.service';
-
-// @Injectable()
-// export class BillingWebhookService {
-//   private logger = new Logger(BillingWebhookService.name);
-
-//   constructor(
-//     private prisma: PrismaService,
-//     private stripe: StripeService,
-//   ) {}
-
-//   // ---------------------------
-//   // MAIN HANDLER
-//   // ---------------------------
-//   async handleEvent(event: Stripe.Event) {
-//     this.logger.log(`➡️ Event: ${event.type} (${event.id})`);
-
-//     try {
-//       switch (event.type) {
-//         case 'checkout.session.completed':
-//           return this.checkoutCompleted(event);
-
-//         case 'customer.subscription.created':
-//         case 'customer.subscription.updated':
-//           return this.subscriptionUpsert(event);
-
-//         case 'customer.subscription.deleted':
-//           return this.subscriptionDeleted(event);
-
-//         case 'invoice.payment_succeeded':
-//           return this.invoicePaid(event);
-
-//         case 'invoice.payment_failed':
-//           return this.invoiceFailed(event);
-
-//         case 'invoice.paid':
-//           this.logger.debug('Skipping invoice.paid to prevent duplicate');
-//           return;
-
-//         default:
-//           this.logger.debug(`No handler for event ${event.type}`);
-//           return;
-//       }
-//     } catch (err) {
-//       this.logger.error(`❌ Webhook error: ${(err as any).message}`);
-//       throw err;
-//     }
-//   }
-
-//   // ---------------------------
-//   // HELPERS
-//   // ---------------------------
-//   private extractMetadata(metadata: any) {
-//     return {
-//       businessId: metadata?.businessId
-//         ? Number(metadata.businessId)
-//         : undefined,
-//       planId: metadata?.planId ? Number(metadata.planId) : undefined,
-//     };
-//   }
-
-//   private ensureMeta(
-//     businessId: number | undefined,
-//     planId: number | undefined,
-//   ) {
-//     if (!businessId || !planId) {
-//       this.logger.error(
-//         `❌ Missing businessId/planId → aborting subscription operation`,
-//       );
-//       return false;
-//     }
-//     return true;
-//   }
-
-//   private getPeriod(sub: any) {
-//     const start = sub.current_period_start
-//       ? new Date(sub.current_period_start * 1000)
-//       : null;
-
-//     const end = sub.current_period_end
-//       ? new Date(sub.current_period_end * 1000)
-//       : null;
-
-//     return {
-//       startDate: start,
-//       renewalDate: end,
-//     };
-//   }
-//   // ---------------------------
-//   // CHECKOUT COMPLETED
-//   // ---------------------------
-//   private async checkoutCompleted(event: any) {
-//     const session = event.data.object;
-
-//     const subscriptionId = session.subscription;
-//     const customerId = session.customer;
-//     const { businessId, planId } = this.extractMetadata(session.metadata);
-
-//     if (!this.ensureMeta(businessId, planId)) return;
-
-//     const sub = await this.stripe.retrieveSubscription(subscriptionId);
-//     const { startDate, renewalDate } = this.getPeriod(sub);
-
-//     await this.prisma.subscription.upsert({
-//       where: {
-//         business_id_plan_id: { business_id: businessId!, plan_id: planId! },
-//       },
-//       create: {
-//         business_id: businessId!,
-//         plan_id: planId!,
-//         stripe_subscription_id: subscriptionId,
-//         stripe_customer_id: customerId,
-//         status: 'TRIALING',
-//         start_date: startDate,
-//         renewal_date: renewalDate,
-//       },
-//       update: {
-//         status: 'TRIALING',
-//         start_date: startDate,
-//         renewal_date: renewalDate,
-//       },
-//     });
-
-//     this.logger.log(`✅ Subscription created (TRIAL) business=${businessId}`);
-//   }
-
-//   // ---------------------------
-//   // SUBSCRIPTION CREATED/UPDATED
-//   // ---------------------------
-//   private async subscriptionUpsert(event: any) {
-//     const sub = event.data.object;
-
-//     const { businessId, planId } = this.extractMetadata(sub.metadata);
-//     if (!this.ensureMeta(businessId, planId)) return;
-
-//     const { startDate, renewalDate } = this.getPeriod(sub);
-
-//     await this.prisma.subscription.upsert({
-//       where: {
-//         business_id_plan_id: { business_id: businessId!, plan_id: planId! },
-//       },
-//       create: {
-//         business_id: businessId!,
-//         plan_id: planId!,
-//         stripe_subscription_id: sub.id,
-//         stripe_customer_id: sub.customer,
-//         status: sub.status.toUpperCase(),
-//         start_date: startDate,
-//         renewal_date: renewalDate,
-//       },
-//       update: {
-//         status: sub.status.toUpperCase(),
-//         start_date: startDate,
-//         end_date: renewalDate,
-//         renewal_date: renewalDate,
-//       },
-//     });
-
-//     this.logger.log(`🔄 Subscription updated business=${businessId}`);
-//   }
-
-//   // ---------------------------
-//   // SUBSCRIPTION DELETED
-//   // ---------------------------
-//   private async subscriptionDeleted(event: any) {
-//     const sub = event.data.object;
-//     const { businessId, planId } = this.extractMetadata(sub.metadata);
-
-//     if (!this.ensureMeta(businessId, planId)) return;
-
-//     await this.prisma.subscription.updateMany({
-//       where: { business_id: businessId!, plan_id: planId! },
-//       data: {
-//         status: 'CANCELED',
-//         end_date: new Date(),
-//       },
-//     });
-
-//     this.logger.log(`🚫 Subscription canceled business=${businessId}`);
-//   }
-
-//   // ---------------------------
-//   // PAYMENT SUCCEEDED
-//   // ---------------------------
-//   private async invoicePaid(event: any) {
-//     const invoice = event.data.object;
-
-//     // Prevent duplicate billing
-//     const dup = await this.prisma.paymentHistory.findFirst({
-//       where: { stripe_invoice_id: invoice.id },
-//     });
-//     if (dup) {
-//       this.logger.warn(`Duplicate invoice ignored: ${invoice.id}`);
-//       return;
-//     }
-
-//     const subscriptionId =
-//       invoice.subscription ?? invoice.lines.data[0]?.subscription;
-
-//     const sub = await this.prisma.subscription.findFirst({
-//       where: { stripe_subscription_id: subscriptionId },
-//     });
-
-//     if (!sub) {
-//       this.logger.warn(
-//         `⚠️ No subscription found for invoice=${invoice.id} → skipping.`,
-//       );
-//       return;
-//     }
-
-//     const amount = (invoice.amount_paid ?? 0) / 100;
-
-//     await this.prisma.paymentHistory.create({
-//       data: {
-//         business_id: sub.business_id,
-//         plan_id: sub.plan_id,
-//         subscription_id: sub.id,
-//         amount,
-//         currency: invoice.currency ?? 'usd',
-//         payment_method: 'card',
-//         status: 'PAID',
-//         invoice_url: invoice.hosted_invoice_url ?? null,
-//         stripe_invoice_id: invoice.id,
-//       },
-//     });
-
-//     const period = invoice.lines.data[0].period;
-//     const renewalDate = new Date(period.end * 1000);
-
-//     await this.prisma.subscription.update({
-//       where: { id: sub.id },
-//       data: {
-//         status: 'ACTIVE',
-//         renewal_date: renewalDate,
-//       },
-//     });
-
-//     this.logger.log(`💰 Payment recorded business=${sub.business_id}`);
-//   }
-
-//   // ---------------------------
-//   // PAYMENT FAILED
-//   // ---------------------------
-//   private async invoiceFailed(event: any) {
-//     const invoice = event.data.object;
-
-//     const sub = await this.prisma.subscription.findFirst({
-//       where: { stripe_subscription_id: invoice.subscription },
-//     });
-
-//     if (!sub) return;
-
-//     await this.prisma.paymentHistory.create({
-//       data: {
-//         business_id: sub.business_id,
-//         plan_id: sub.plan_id,
-//         subscription_id: sub.id,
-//         amount: (invoice.amount_due ?? 0) / 100,
-//         currency: invoice.currency ?? 'usd',
-//         payment_method: 'card',
-//         status: 'FAILED',
-//         stripe_invoice_id: invoice.id,
-//       },
-//     });
-
-//     await this.prisma.subscription.update({
-//       where: { id: sub.id },
-//       data: { status: 'PAST_DUE' },
-//     });
-
-//     this.logger.log(`⚠️ Payment FAILED business=${sub.business_id}`);
-//   }
-// }
-
+// src/billing/services/billing-webhook.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
@@ -285,306 +9,118 @@ export class BillingWebhookService {
   private logger = new Logger(BillingWebhookService.name);
 
   constructor(
-    private prisma: PrismaService,
-    private stripe: StripeService,
+    private readonly prisma: PrismaService,
+    private readonly stripeService: StripeService,
   ) {}
 
-  // ------------------------------------------
-  // MAIN WEBHOOK ROUTER
-  // ------------------------------------------
   async handleEvent(event: Stripe.Event) {
-    this.logger.log(`➡️ Event: ${event.type} (${event.id})`);
+    this.logger.log(`➡️ ${event.type}`);
 
-    try {
-      switch (event.type) {
-        // Checkout events
-        case 'checkout.session.completed':
-          return this.checkoutCompleted(event);
+    switch (event.type) {
+      case 'checkout.session.completed':
+        return this.checkoutCompleted(event);
 
-        case 'checkout.session.expired':
-          return this.checkoutExpired(event);
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        return this.subscriptionUpsert(event);
 
-        case 'checkout.session.async_payment_failed':
-          return this.checkoutFailed(event);
+      case 'customer.subscription.deleted':
+        return this.subscriptionDeleted(event);
 
-        // Subscription lifecycle
-        case 'customer.subscription.created':
-        case 'customer.subscription.updated':
-          return this.subscriptionUpsert(event);
+      case 'invoice.payment_succeeded':
+        return this.invoicePaid(event);
 
-        case 'customer.subscription.deleted':
-          return this.subscriptionDeleted(event);
-
-        // Invoice events
-        case 'invoice.payment_succeeded':
-          return this.invoicePaid(event);
-
-        case 'invoice.payment_failed':
-          return this.invoiceFailed(event);
-
-        case 'invoice.paid':
-          this.logger.debug('Skipping invoice.paid (duplicate event)');
-          return;
-
-        default:
-          this.logger.debug(`No handler for event ${event.type}`);
-          return;
-      }
-    } catch (err) {
-      this.logger.error(`❌ Webhook error: ${(err as any).message}`);
-      throw err;
+      case 'invoice.payment_failed':
+        return this.invoiceFailed(event);
     }
   }
 
-  // ------------------------------------------
-  // HELPERS
-  // ------------------------------------------
-
-  private extractMetadata(metadata: any) {
+  // ---------------------------------------------
+  private extractMeta(meta: any) {
     return {
-      businessId: metadata?.businessId
-        ? Number(metadata.businessId)
-        : undefined,
-      planId: metadata?.planId ? Number(metadata.planId) : undefined,
+      businessId: Number(meta?.businessId),
+      planId: Number(meta?.planId),
     };
   }
 
-  private ensureMeta(
-    businessId: number | undefined,
-    planId: number | undefined,
-  ) {
-    if (!businessId || !planId) {
-      this.logger.error(`❌ Missing businessId/planId → aborting`);
-      return false;
-    }
-    return true;
-  }
-
-  private getPeriod(sub: any) {
-    const start = sub.current_period_start
-      ? new Date(sub.current_period_start * 1000)
-      : null;
-
-    const end = sub.current_period_end
-      ? new Date(sub.current_period_end * 1000)
-      : null;
-
+  private getDates(sub: any) {
     return {
-      startDate: start,
-      renewalDate: end,
+      start: sub.current_period_start
+        ? new Date(sub.current_period_start * 1000)
+        : null,
+      end: sub.current_period_end
+        ? new Date(sub.current_period_end * 1000)
+        : sub.trial_end
+          ? new Date(sub.trial_end * 1000)
+          : null,
     };
   }
 
-  // ------------------------------------------
-  // CHECKOUT COMPLETED → TRIAL / FIRST PAYMENT
-  // ------------------------------------------
+  // ---------------------------------------------
   private async checkoutCompleted(event: any) {
-    const session = event.data.object;
+    const s = event.data.object;
+    const { businessId, planId } = this.extractMeta(s.metadata);
 
-    const subscriptionId = session.subscription;
-    const customerId = session.customer;
-
-    const { businessId, planId } = this.extractMetadata(session.metadata);
-    if (!this.ensureMeta(businessId, planId)) return;
-
-    const stripeSub = await this.stripe.retrieveSubscription(subscriptionId);
-    const { startDate, renewalDate } = this.getPeriod(stripeSub);
-
-    // Create subscription as TRIALING first
-    await this.prisma.subscription.upsert({
-      where: {
-        business_id_plan_id: { business_id: businessId!, plan_id: planId! },
-      },
-      create: {
-        business_id: businessId!,
-        plan_id: planId!,
-        stripe_subscription_id: subscriptionId,
-        stripe_customer_id: customerId,
-        status: stripeSub.status.toUpperCase(), // likely TRIALING
-        start_date: startDate,
-        renewal_date: renewalDate,
-      },
-      update: {
-        status: stripeSub.status.toUpperCase(),
-        start_date: startDate,
-        renewal_date: renewalDate,
-      },
-    });
-
-    this.logger.log(
-      `✅ Checkout completed → Subscription created for business=${businessId}`,
+    const stripeSub = await this.stripeService.retrieveSubscription(
+      s.subscription,
     );
-  }
 
-  // ------------------------------------------
-  // CHECKOUT EXPIRED (User canceled on payment page)
-  // ------------------------------------------
-  private async checkoutExpired(event: any) {
-    const session = event.data.object;
+    const { start, end } = this.getDates(stripeSub);
 
-    const { businessId, planId } = this.extractMetadata(session.metadata);
-    if (!this.ensureMeta(businessId, planId)) return;
-
-    await this.prisma.subscription.updateMany({
-      where: { business_id: businessId!, plan_id: planId! },
+    await this.prisma.subscription.create({
       data: {
-        status: 'CANCELED',
-        end_date: new Date(),
+        business_id: businessId,
+        plan_id: planId,
+        stripe_subscription_id: stripeSub.id,
+        stripe_customer_id: s.customer,
+        status: stripeSub.status.toUpperCase(), // TRIALING
+        start_date: start,
+        renewal_date: end,
       },
     });
-
-    this.logger.warn(
-      `❌ Checkout expired → Subscription canceled for business=${businessId}`,
-    );
   }
 
-  // ------------------------------------------
-  // CHECKOUT PAYMENT FAILED
-  // ------------------------------------------
-  private async checkoutFailed(event: any) {
-    const session = event.data.object;
-
-    const { businessId, planId } = this.extractMetadata(session.metadata);
-    if (!this.ensureMeta(businessId, planId)) return;
-
-    await this.prisma.subscription.updateMany({
-      where: { business_id: businessId!, plan_id: planId! },
-      data: {
-        status: 'CANCELED',
-        end_date: new Date(),
-      },
-    });
-
-    this.logger.warn(
-      `❌ Checkout payment failed → Subscription canceled for business=${businessId}`,
-    );
-  }
-
-  // ------------------------------------------
-  // SUBSCRIPTION CREATED / UPDATED
-  // ------------------------------------------
+  // ---------------------------------------------
   private async subscriptionUpsert(event: any) {
     const sub = event.data.object;
-
-    const { businessId, planId } = this.extractMetadata(sub.metadata);
-    if (!this.ensureMeta(businessId, planId)) return;
-
-    const { startDate, renewalDate } = this.getPeriod(sub);
-
-    await this.prisma.subscription.upsert({
-      where: {
-        business_id_plan_id: { business_id: businessId!, plan_id: planId! },
-      },
-      create: {
-        business_id: businessId!,
-        plan_id: planId!,
-        stripe_subscription_id: sub.id,
-        stripe_customer_id: sub.customer,
-        status: sub.status.toUpperCase(),
-        start_date: startDate,
-        renewal_date: renewalDate,
-      },
-      update: {
-        status: sub.status.toUpperCase(),
-        start_date: startDate,
-        end_date: renewalDate,
-        renewal_date: renewalDate,
-      },
-    });
-
-    this.logger.log(
-      `🔄 Subscription updated (status=${sub.status}) for business=${businessId}`,
-    );
-  }
-
-  // ------------------------------------------
-  // SUBSCRIPTION DELETED (Canceled from Stripe portal)
-  // ------------------------------------------
-  private async subscriptionDeleted(event: any) {
-    const sub = event.data.object;
-
-    const { businessId, planId } = this.extractMetadata(sub.metadata);
-    if (!this.ensureMeta(businessId, planId)) return;
+    const { start, end } = this.getDates(sub);
 
     await this.prisma.subscription.updateMany({
-      where: { business_id: businessId!, plan_id: planId! },
+      where: { stripe_subscription_id: sub.id },
+      data: {
+        status: sub.status.toUpperCase(), // ONLY place ACTIVE happens
+        start_date: start,
+        renewal_date: end,
+      },
+    });
+  }
+
+  // ---------------------------------------------
+  private async subscriptionDeleted(event: any) {
+    await this.prisma.subscription.updateMany({
+      where: { stripe_subscription_id: event.data.object.id },
       data: {
         status: 'CANCELED',
         end_date: new Date(),
       },
     });
-
-    this.logger.log(`🚫 Subscription deleted → business=${businessId}`);
   }
 
-  // ------------------------------------------
-  // PAYMENT SUCCEEDED
-  // ------------------------------------------
+  // ---------------------------------------------
+  // 🔒 CRITICAL FIX: DO NOT ACTIVATE DURING TRIAL
+  // ---------------------------------------------
   private async invoicePaid(event: any) {
     const invoice = event.data.object;
 
-    // Prevent duplicates
-    const dup = await this.prisma.paymentHistory.findFirst({
+    // 🔒 HARD STOP — already recorded
+    const alreadyExists = await this.prisma.paymentHistory.findUnique({
       where: { stripe_invoice_id: invoice.id },
     });
-    if (dup) {
-      this.logger.warn(`Duplicate invoice ignored: ${invoice.id}`);
+
+    if (alreadyExists) {
+      this.logger.warn(`⚠️ Duplicate payment ignored (invoice=${invoice.id})`);
       return;
     }
-
-    const subscriptionId =
-      invoice.subscription ?? invoice.lines.data[0]?.subscription;
-
-    const sub = await this.prisma.subscription.findFirst({
-      where: { stripe_subscription_id: subscriptionId },
-    });
-
-    if (!sub) {
-      this.logger.warn(
-        `⚠️ No subscription record found for invoice=${invoice.id}`,
-      );
-      return;
-    }
-
-    const amount = (invoice.amount_paid ?? 0) / 100;
-
-    // Record payment history
-    await this.prisma.paymentHistory.create({
-      data: {
-        business_id: sub.business_id,
-        plan_id: sub.plan_id,
-        subscription_id: sub.id,
-        amount,
-        currency: invoice.currency ?? 'usd',
-        payment_method: 'card',
-        status: 'PAID',
-        invoice_url: invoice.hosted_invoice_url ?? null,
-        stripe_invoice_id: invoice.id,
-      },
-    });
-
-    // Update subscription to ACTIVE
-    const period = invoice.lines.data[0].period;
-    const renewalDate = new Date(period.end * 1000);
-
-    await this.prisma.subscription.update({
-      where: { id: sub.id },
-      data: {
-        status: 'ACTIVE',
-        renewal_date: renewalDate,
-      },
-    });
-
-    this.logger.log(
-      `💰 Payment success → Subscription ACTIVE (business=${sub.business_id})`,
-    );
-  }
-
-  // ------------------------------------------
-  // PAYMENT FAILED
-  // ------------------------------------------
-  private async invoiceFailed(event: any) {
-    const invoice = event.data.object;
 
     const sub = await this.prisma.subscription.findFirst({
       where: { stripe_subscription_id: invoice.subscription },
@@ -597,19 +133,33 @@ export class BillingWebhookService {
         business_id: sub.business_id,
         plan_id: sub.plan_id,
         subscription_id: sub.id,
-        amount: (invoice.amount_due ?? 0) / 100,
+        amount: (invoice.amount_paid ?? 0) / 100,
         currency: invoice.currency ?? 'usd',
         payment_method: 'card',
-        status: 'FAILED',
+        status: 'PAID',
         stripe_invoice_id: invoice.id,
+        invoice_url: invoice.hosted_invoice_url ?? null,
       },
     });
+
+    // ❗ Trial হলে status change করবেন না
+    if (sub.status === 'TRIALING') {
+      this.logger.log('🟡 Trial invoice → payment recorded only');
+      return;
+    }
+  }
+
+  // ---------------------------------------------
+  private async invoiceFailed(event: any) {
+    const sub = await this.prisma.subscription.findFirst({
+      where: { stripe_subscription_id: event.data.object.subscription },
+    });
+
+    if (!sub) return;
 
     await this.prisma.subscription.update({
       where: { id: sub.id },
       data: { status: 'PAST_DUE' },
     });
-
-    this.logger.warn(`⚠️ Payment failed → business=${sub.business_id}`);
   }
 }
