@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -79,5 +80,24 @@ export class ThreadController {
   @Patch(':id/unread')
   markUnread(@Param('id', ParseIntPipe) id: number) {
     return this.threadService.markThreadUnread(id);
+  }
+
+  @Patch(':id/trash')
+  moveToTrash(@Param('id', ParseIntPipe) id: number) {
+    return this.threadService.moveToTrash(id);
+  }
+
+  @Patch(':id/restore')
+  restore(@Param('id', ParseIntPipe) id: number) {
+    return this.threadService.restoreFromTrash(id);
+  }
+  @Patch('bulk/star')
+  bulkStar(@Body('ids') ids: number[]) {
+    return this.threadService.bulkStar(ids);
+  }
+
+  @Patch('bulk/unstar')
+  bulkUnstar(@Body('ids') ids: number[]) {
+    return this.threadService.bulkUnstar(ids);
   }
 }

@@ -77,7 +77,7 @@ export class ThreadService {
       console.log(tag);
       where.labels = {
         some: {
-          label_id: tag, 
+          label_id: tag,
         },
       };
     }
@@ -206,5 +206,90 @@ export class ThreadService {
       where: { id, is_deleted: false },
       data: { is_archived: false },
     });
+  }
+
+  //
+  /* ===============================
+   TRASH
+=============================== */
+  async moveToTrash(thread_id: number) {
+    const thread = await this.prisma.emailThread.findUnique({
+      where: { id: thread_id },
+    });
+
+    if (!thread) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    return this.prisma.emailThread.update({
+      where: { id: thread_id },
+      data: {
+        is_deleted: true,
+        is_archived: false, // trash মানে archive না
+      },
+    });
+  }
+
+  async restoreFromTrash(thread_id: number) {
+    const thread = await this.prisma.emailThread.findUnique({
+      where: { id: thread_id },
+    });
+
+    if (!thread) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    return this.prisma.emailThread.update({
+      where: { id: thread_id },
+      data: {
+        is_deleted: false,
+        is_archived: false,
+      },
+    });
+  }
+  /* ===============================
+   BULK STAR / UNSTAR
+=============================== */
+
+  async bulkStar(ids: number[]) {
+    if (!ids || ids.length === 0) {
+      return { success: false, message: 'No thread ids provided' };
+    }
+
+    await this.prisma.emailThread.updateMany({
+      where: {
+        id: { in: ids },
+        is_deleted: false,
+      },
+      data: {
+        is_starred: true,
+      },
+    });
+
+    return {
+      success: true,
+      starred_count: ids.length,
+    };
+  }
+
+  async bulkUnstar(ids: number[]) {
+    if (!ids || ids.length === 0) {
+      return { success: false, message: 'No thread ids provided' };
+    }
+
+    await this.prisma.emailThread.updateMany({
+      where: {
+        id: { in: ids },
+        is_deleted: false,
+      },
+      data: {
+        is_starred: false,
+      },
+    });
+
+    return {
+      success: true,
+      unstarred_count: ids.length,
+    };
   }
 }

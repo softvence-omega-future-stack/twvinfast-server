@@ -464,7 +464,7 @@ export class AuthService {
         password_hash: hashed,
         role_id: role.id,
         phone: dto.phone,
-        timezone: dto.timezone,
+        location: dto.location,
         email_signature: dto.email_signature,
         business_id: admin.business_id,
       },

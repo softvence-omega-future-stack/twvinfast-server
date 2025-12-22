@@ -23,7 +23,7 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
-  timezone?: string;
+  location?: string;
 
   @IsOptional()
   @IsString()

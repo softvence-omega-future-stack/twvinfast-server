@@ -100,6 +100,7 @@ model EmailThread {
   deleted_at        DateTime?
   is_deleted        Boolean            @default(false)
   is_starred        Boolean            @default(false)
+  is_read           Boolean           @default(false)
   opportunity_stage OpportunityStage?
   emails            Email[]
   business          Business           @relation(fields: [business_id], references: [id])
