@@ -24,12 +24,14 @@ model User {
   last_login_at      DateTime?
   password_hash      String
   role_id            Int
-  two_factor_enabled Boolean                 @default(false)
+twoFAEnabled   Boolean @default(false)
+twoFASecret    String?
   updated_at         DateTime                @updatedAt
   status             String?                 @default("ACTIVE")
   email_signature    String?
   phone              String?
-  timezone           String?                 @default("UTC")
+  location           String?                 @default("Canada")
+  notificationSetting NotificationSetting?
   aiActions          AIAction[]
   aiReplies          AiGeneratedReply[]
   hallucinations     AiHallucinationReport[]
@@ -38,6 +40,28 @@ model User {
   business           Business?               @relation(fields: [business_id], references: [id])
   role               Role                    @relation(fields: [role_id], references: [id])
 }
+
+model NotificationSetting {
+  id                   Int      @id @default(autoincrement())
+  user_id              Int      @unique
+
+  email_alert_enabled  Boolean  @default(true)
+  login_alert_enabled  Boolean  @default(true)
+
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+
+
+model SecuritySetting {
+  id             Int     @id @default(1)
+  force2FAForAll Boolean @default(false)
+  updatedAt      DateTime @updatedAt
+}
+
 
 model Mailbox {
   id            Int           @id @default(autoincrement())
@@ -288,11 +312,14 @@ model Business {
   id                 Int                     @id @default(autoincrement())
   name               String
   website            String?
+  phone              String?
+  description         String?
   status             String?                 @default("ACTIVE")
   created_at         DateTime                @default(now())
   updated_at         DateTime                @updatedAt
   email              String?
   stripe_customer_id String?
+    logo_url           String?
   aiReplies          AiGeneratedReply[]
   hallucinations     AiHallucinationReport[]
   aiTraining         AiTrainingData[]

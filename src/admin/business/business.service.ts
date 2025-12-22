@@ -12,11 +12,30 @@ export class BusinessService {
     });
   }
 
-  // ✔ Update Company Profile
-  async updateBusiness(businessId: number, data: any) {
+  // ✔ Update Company Profile (FIXED)
+  async updateBusiness(businessId: number, dto: any) {
+    let data = dto;
+
+    // 🔧 CASE: multipart/form-data with "data" field (JSON string)
+    if (typeof dto.data === 'string') {
+      try {
+        data = {
+          ...JSON.parse(dto.data),
+          ...(dto.logo_url && { logo_url: dto.logo_url }),
+        };
+      } catch (e) {
+        throw new Error('Invalid business update payload');
+      }
+    }
+
+    // 🧹 remove undefined fields
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v !== undefined),
+    );
+
     return this.prisma.business.update({
       where: { id: businessId },
-      data,
+      data: cleanData,
     });
   }
 

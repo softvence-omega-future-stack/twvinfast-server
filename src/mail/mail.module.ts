@@ -41,6 +41,7 @@ import { ThreadLabelService } from './services/thread-label.service';
     EmailService,
     SmtpService,
     ThreadLabelService,
+    MailService,
   ],
 })
 export class EmailModule {}

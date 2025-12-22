@@ -15,5 +15,18 @@ export class BusinessUpdateDto {
 
   @IsOptional()
   @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  // 🖼️ Company Logo (set from multer, not user input)
+  @IsOptional()
+  @IsString()
+  logo_url?: string;
+
+  @IsOptional()
+  @IsString()
   status?: string;
 }

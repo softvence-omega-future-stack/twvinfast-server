@@ -3,6 +3,8 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { BusinessModule } from './business/business.module';
 import { UsersModule } from './users/users.module';
+import { SuperAdminSecurityController } from './super-admin-security.controller';
+import { PrismaModule } from 'prisma/prisma.module';
 
 // Submodules
 
@@ -10,6 +12,7 @@ import { UsersModule } from './users/users.module';
   imports: [
     BusinessModule,
     UsersModule,
+    PrismaModule
     // TrainingModule,
     // CustomersModule,
     // OpportunitiesModule,
@@ -17,7 +20,7 @@ import { UsersModule } from './users/users.module';
     // AiModule,
     // HallucinationModule,
   ],
-  controllers: [AdminController],
+  controllers: [AdminController,SuperAdminSecurityController],
   providers: [AdminService],
 })
 export class AdminModule {}

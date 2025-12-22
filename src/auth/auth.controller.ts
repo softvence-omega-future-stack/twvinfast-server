@@ -98,4 +98,18 @@ export class AuthController {
   superAdminRoute() {
     return 'Super Admin Access Granted';
   }
+  // UPDATE NOTIFICATION SETTINGS (Login alert & New mail alert)
+  // -----------------------------------------------------------
+  @UseGuards(AuthGuard('jwt'))
+  @Post('notification')
+  updateNotification(
+    @Req() req,
+    @Body()
+    body: {
+      login_alert_enabled?: boolean;
+      email_alert_enabled?: boolean;
+    },
+  ) {
+    return this.auth.updateNotificationSettings(req.user.sub, body);
+  }
 }

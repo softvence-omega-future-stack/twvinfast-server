@@ -1,6 +1,20 @@
-import { Controller, Get, Param, Patch, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Body,
+  UseGuards,
+  UseInterceptors,
+  Req,
+  UploadedFile,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { AuthGuard } from '@nestjs/passport';
 import { BusinessUpdateDto } from './dto/business-update.dto';
 import { BusinessService } from './business.service';
+import type { Express } from 'express';
+import { mailMulterConfig } from 'src/config/multer.config';
 
 @Controller('admin/business')
 export class BusinessController {
@@ -12,10 +26,23 @@ export class BusinessController {
     return this.businessService.getBusiness(Number(id));
   }
 
-  // ✔ Update Company Profile
-  @Patch(':id')
-  updateBusiness(@Param('id') id: string, @Body() dto: BusinessUpdateDto) {
-    return this.businessService.updateBusiness(Number(id), dto);
+  // ✔ Update Company Profile + Logo
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('profile')
+  @UseInterceptors(FileInterceptor('logo', mailMulterConfig))
+  async updateCompanyProfile(
+    @Req() req,
+    @Body() dto: BusinessUpdateDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    // 🖼️ logo uploaded?
+    if (file) {
+      dto.logo_url = `/uploads/${
+        file.mimetype.startsWith('image/') ? 'images' : 'files'
+      }/${file.filename}`;
+    }
+
+    return this.businessService.updateBusiness(req.user.business_id, dto);
   }
 
   // ✔ Knowledge Base

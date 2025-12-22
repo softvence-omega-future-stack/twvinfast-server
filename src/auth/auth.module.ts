@@ -10,6 +10,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './strategies/roles.guard';
 import { JwtAuthGuard } from './strategies/jwt-auth.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { TwoFAService } from './2fa/twofa.service';
+import { TwoFAController } from './2fa/twofa.controller';
 
 @Module({
   imports: [
@@ -20,7 +22,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     // They are passed per-strategy to avoid conflicts
   ],
 
-  controllers: [AuthController],
+  controllers: [AuthController, TwoFAController],
 
   providers: [
     AuthService,
@@ -28,7 +30,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuthService,
     JwtStrategy,
     RolesGuard,
-  
+  TwoFAService,
     RefreshTokenStrategy, // Refresh Token Guard,
 
     // 1️⃣ FIRST: Global AuthGuard ('jwt')

@@ -10,6 +10,7 @@ import { StripeModule } from './stripe/stripe.module';
 import { ConfigModule } from '@nestjs/config';
 import { UserModule } from './user/user.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     PrismaModule,
     UserModule,
     AuthModule,
+    AdminModule,
     StripeModule, // ✅ REQUIRED
     BillingModule, // ✅ REQUIRED
   ],

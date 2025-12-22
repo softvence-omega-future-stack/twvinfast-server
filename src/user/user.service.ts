@@ -81,7 +81,7 @@ export class UserService {
       data: {
         name: data.name,
         status: data.status,
-        two_factor_enabled: data.two_factor_enabled,
+        twoFAEnabled: data.twoFAEnabled,
         role: data.role_id ? { connect: { id: data.role_id } } : undefined,
       },
       include: {

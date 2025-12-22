@@ -7,9 +7,10 @@ import { BillingWebhookService } from './services/billing-webhook.service';
 
 import { StripeModule } from 'src/stripe/stripe.module';
 import { PrismaModule } from 'prisma/prisma.module';
+import { EmailModule } from 'src/mail/mail.module';
 
 @Module({
-  imports: [StripeModule, PrismaModule], // ✅ FIXED
+  imports: [StripeModule, PrismaModule, EmailModule], 
   controllers: [BillingController],
   providers: [BillingService, BillingWebhookService],
   exports: [BillingService],

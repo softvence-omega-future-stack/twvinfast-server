@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
 import { StripeService } from 'src/stripe/stripe.service';
+import { MailService } from 'src/mail/services/mail.service';
 
 @Injectable()
 export class BillingWebhookService {
@@ -11,6 +12,7 @@ export class BillingWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeService: StripeService,
+    private readonly mailService: MailService, // ✅ ADD THIS
   ) {}
 
   async handleEvent(event: Stripe.Event) {
@@ -150,16 +152,106 @@ export class BillingWebhookService {
   }
 
   // ---------------------------------------------
+  // private async invoiceFailed(event: any) {
+  //   const sub = await this.prisma.subscription.findFirst({
+  //     where: { stripe_subscription_id: event.data.object.subscription },
+  //   });
+
+  //   if (!sub) return;
+
+  //   await this.prisma.subscription.update({
+  //     where: { id: sub.id },
+  //     data: { status: 'PAST_DUE' },
+  //   });
+  // }
+  // ---------------------------------------------
+  // PAYMENT FAILED → SEND EMAIL
+  // ---------------------------------------------
+  // ---------------------------------------------
+  // PAYMENT FAILED → SEND EMAIL (FIXED)
+  // ---------------------------------------------
+
+  private async getSuperAdminMailbox() {
+    const mailbox = await this.prisma.mailbox.findFirst({
+      where: {
+        user: {
+          role: {
+            name: 'SUPER_ADMIN',
+          },
+        },
+        smtp_password: {
+          not: null,
+        },
+      },
+      select: {
+        id: true,
+        business_id: true,
+        email_address: true,
+      },
+    });
+
+    if (!mailbox) {
+      throw new Error('Super Admin SMTP mailbox not found');
+    }
+
+    return mailbox;
+  }
+
+  // ---------------------------------------------
+  // PAYMENT FAILED → SEND EMAIL (SUPER ADMIN SMTP)
+  // ---------------------------------------------
   private async invoiceFailed(event: any) {
+    const invoice = event.data.object;
+
     const sub = await this.prisma.subscription.findFirst({
-      where: { stripe_subscription_id: event.data.object.subscription },
+      where: { stripe_subscription_id: invoice.subscription },
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
 
     if (!sub) return;
 
+    // 1️⃣ Update subscription status
     await this.prisma.subscription.update({
       where: { id: sub.id },
       data: { status: 'PAST_DUE' },
+    });
+
+    // 2️⃣ Business email না থাকলে stop
+    if (!sub.business?.email) return;
+
+    // 3️⃣ SUPER ADMIN mailbox বের করুন
+    const adminMailbox = await this.getSuperAdminMailbox();
+
+    // 4️⃣ Send email using Super Admin SMTP
+    await this.mailService.sendSMTPEmail({
+      business_id: adminMailbox.business_id ?? sub.business_id,
+      mailbox_id: adminMailbox.id, //  SUPER ADMIN SMTP
+      to: [sub.business.email],
+      subject: '❌ Subscription Payment Failed',
+      html: `
+      <p>Hello ${sub.business.name},</p>
+
+      <p>We were unable to process your subscription payment.</p>
+
+      <p>
+        Please update your payment method to continue using the service.
+      </p>
+
+      <p>
+        <b>Status:</b> Payment Failed<br/>
+        <b>Plan ID:</b> ${sub.plan_id}
+      </p>
+
+      <p>— Support Team</p>
+    `,
     });
   }
 }
