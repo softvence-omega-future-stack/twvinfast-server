@@ -29,7 +29,8 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe());
 
-  await app.listen(process.env.PORT || 4000);
+  
+  await app.listen(process.env.PORT || 8800);
   console.log('🚀 Server running');
 }
 bootstrap();

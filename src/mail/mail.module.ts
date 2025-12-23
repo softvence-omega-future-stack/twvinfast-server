@@ -14,9 +14,10 @@ import { SmtpController } from './controllers/smtp.controller';
 import { SmtpService } from './services/smtp.service';
 import { ThreadLabelController } from './controllers/thread-label.controller';
 import { ThreadLabelService } from './services/thread-label.service';
+import { SocketModule } from 'src/socket/socket.module';
 
 @Module({
-  imports: [],
+  imports: [SocketModule],
   controllers: [
     MailboxController,
     ThreadController,

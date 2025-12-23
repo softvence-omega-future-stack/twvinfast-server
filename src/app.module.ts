@@ -13,19 +13,20 @@ import { JwtAuthGuard } from './auth/strategies/jwt-auth.guard';
 import { RolesGuard } from './auth/strategies/roles.guard';
 import { EmailModule } from './mail/mail.module';
 import { AdminModule } from './admin/admin.module';
+import { SocketModule } from './socket/socket.module';
 
 @Module({
   imports: [
     AuthModule,
     PrismaModule,
     UserModule,
+    SocketModule,
     EmailModule,
     CompanyModule,
     ConfigModule.forRoot({ isGlobal: true }),
     BillingModule,
     StripeModule,
     AdminModule,
-    
   ],
   controllers: [AppController],
   providers: [

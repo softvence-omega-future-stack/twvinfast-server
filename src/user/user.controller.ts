@@ -23,6 +23,16 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   // -----------------------------------------
+  // USER: Get My Full Profile (ALL INFO)
+  // -----------------------------------------
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMe(@Req() req) {
+    const userId = Number(req.user.sub);
+    return this.userService.getMyFullProfile(userId);
+  }
+
+  // -----------------------------------------
   // ADMIN: Get All Users
   // -----------------------------------------
   @Get()

@@ -258,4 +258,35 @@ export class UserService {
       },
     });
   }
+
+  //
+  // --------------------------
+  // GET LOGGED-IN USER FULL INFO
+  // --------------------------
+  async getMyFullProfile(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: true,
+        business: true,
+        mailboxes: true,
+        notificationSetting: true,
+
+        // optional but useful
+        // emails: true,
+        // aiActions: true,
+        // aiReplies: true,
+        // hallucinations: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // 🔐 remove sensitive data
+    const { password_hash, ...clean } = user;
+
+    return clean;
+  }
 }
