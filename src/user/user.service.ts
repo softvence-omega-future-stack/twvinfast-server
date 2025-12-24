@@ -7,6 +7,8 @@ import { PrismaService } from 'prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from '../auth/dto/registerUser.dto';
 import { UpdateMailboxDto } from './dto/update-mailbox.dto';
+import verifyImap from 'src/config/verifyImap';
+import verifySmtp from 'src/config/verifySmtp';
 
 @Injectable()
 export class UserService {
@@ -116,7 +118,7 @@ export class UserService {
 
     if (dto.name) data.name = dto.name;
     if (dto.phone) data.phone = dto.phone;
-    if (dto.timezone) data.timezone = dto.timezone;
+    if (dto.location) data.location = dto.location;
     if (dto.email_signature) data.email_signature = dto.email_signature;
 
     const user = await this.prisma.user.findUnique({
@@ -157,10 +159,26 @@ export class UserService {
     }
 
     if (!user.business_id) {
-      throw new BadRequestException('User has no business assigned');
+      throw new BadRequestException('User has no business');
     }
 
-    // প্রতি user + business combo এর জন্য ১টা mailbox
+    // ==================================================
+    // 🔧 STEP 1: VERIFY CREDENTIALS FIRST (NO DB TOUCH)
+    // ==================================================
+
+    // 🔧 FIX: only verify if required fields present
+    if (dto.smtp_host && dto.smtp_port && dto.smtp_password) {
+      await verifySmtp(dto); // ❌ error → function stops here
+    }
+
+    if (dto.imap_host && dto.imap_port && dto.imap_password) {
+      await verifyImap(dto); // ❌ error → function stops here
+    }
+
+    // ==================================================
+    // 🔧 STEP 2: SAVE ONLY IF VERIFY PASSED
+    // ==================================================
+
     const existing = await this.prisma.mailbox.findFirst({
       where: {
         user_id: userId,
@@ -168,9 +186,6 @@ export class UserService {
       },
     });
 
-    // -------------------------------------------
-    // ⭐ UPDATE mailbox IF EXISTS
-    // -------------------------------------------
     if (existing) {
       return this.prisma.mailbox.update({
         where: { id: existing.id },
@@ -188,27 +203,83 @@ export class UserService {
       });
     }
 
-    // -------------------------------------------
-    // ⭐ CREATE mailbox IF NOT EXISTS
-    // -------------------------------------------
     return this.prisma.mailbox.create({
       data: {
         business_id: user.business_id,
         user_id: userId,
         provider: dto.provider ?? 'SMTP',
         email_address: dto.email_address ?? user.email,
-
-        // Prisma optional fields → must be undefined to skip OR null if user sends null
         imap_host: dto.imap_host ?? undefined,
         imap_port: dto.imap_port ?? undefined,
-
         smtp_host: dto.smtp_host ?? undefined,
         smtp_port: dto.smtp_port ?? undefined,
-
         is_ssl: dto.is_ssl ?? true,
       },
     });
   }
+
+  // async upsertMyPrimaryMailbox(userId: number, dto: UpdateMailboxDto) {
+  //   const user = await this.prisma.user.findUnique({
+  //     where: { id: userId },
+  //   });
+
+  //   if (!user) {
+  //     throw new BadRequestException('User not found');
+  //   }
+
+  //   if (!user.business_id) {
+  //     throw new BadRequestException('User has no business assigned');
+  //   }
+
+  //   // প্রতি user + business combo এর জন্য ১টা mailbox
+  //   const existing = await this.prisma.mailbox.findFirst({
+  //     where: {
+  //       user_id: userId,
+  //       business_id: user.business_id,
+  //     },
+  //   });
+
+  //   // -------------------------------------------
+  //   // ⭐ UPDATE mailbox IF EXISTS
+  //   // -------------------------------------------
+  //   if (existing) {
+  //     return this.prisma.mailbox.update({
+  //       where: { id: existing.id },
+  //       data: {
+  //         provider: dto.provider ?? undefined,
+  //         email_address: dto.email_address ?? undefined,
+  //         imap_host: dto.imap_host ?? undefined,
+  //         imap_port: dto.imap_port ?? undefined,
+  //         smtp_host: dto.smtp_host ?? undefined,
+  //         smtp_port: dto.smtp_port ?? undefined,
+  //         imap_password: dto.imap_password ?? undefined,
+  //         smtp_password: dto.smtp_password ?? undefined,
+  //         is_ssl: dto.is_ssl ?? undefined,
+  //       },
+  //     });
+  //   }
+
+  //   // -------------------------------------------
+  //   // ⭐ CREATE mailbox IF NOT EXISTS
+  //   // -------------------------------------------
+  //   return this.prisma.mailbox.create({
+  //     data: {
+  //       business_id: user.business_id,
+  //       user_id: userId,
+  //       provider: dto.provider ?? 'SMTP',
+  //       email_address: dto.email_address ?? user.email,
+
+  //       // Prisma optional fields → must be undefined to skip OR null if user sends null
+  //       imap_host: dto.imap_host ?? undefined,
+  //       imap_port: dto.imap_port ?? undefined,
+
+  //       smtp_host: dto.smtp_host ?? undefined,
+  //       smtp_port: dto.smtp_port ?? undefined,
+
+  //       is_ssl: dto.is_ssl ?? true,
+  //     },
+  //   });
+  // }
   async upsertAdminPrimaryMailbox(userId: number, dto: UpdateMailboxDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

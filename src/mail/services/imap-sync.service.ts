@@ -17,23 +17,44 @@
 // import * as fs from 'fs';
 // import { join, extname } from 'path';
 // import getNameFromEmail from 'src/config/getNameFromEmail';
-// import { SocketService } from 'src/socket/socket.service'; // ✅ ADDED
+// import { SocketService } from 'src/socket/socket.service';
+
+// /* ===============================
+//    🔧 SIGNATURE STRIPPER (ADDED)
+//    ONLY USED FOR body_text
+// =============================== */
+// function stripSignature(text: string): string {
+//   const patterns = [
+//     /\n--\s*\n[\s\S]*$/i,
+//     /\nRegards[\s\S]*$/i,
+//     /\nBest regards[\s\S]*$/i,
+//     /\nThanks[\s\S]*$/i,
+//     /\nThank you[\s\S]*$/i,
+//     /\nSincerely[\s\S]*$/i,
+//   ];
+
+//   for (const p of patterns) {
+//     if (p.test(text)) {
+//       return text.replace(p, '').trim();
+//     }
+//   }
+
+//   return text.trim();
+// }
 
 // @Injectable()
 // export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
 //   private logger = new Logger('IMAP-SYNC');
 //   private clients = new Map<number, ImapFlow>();
-//   private syncing = new Set<number>(); // ✅ already correct
+//   private syncing = new Set<number>();
 //   private lastSyncAt = new Map<number, number>();
 
 //   constructor(
 //     private readonly prisma: PrismaService,
-//     private readonly socket: SocketService, // ✅ ADDED (emit only)
+//     private readonly socket: SocketService,
 //   ) {}
 
-//   /* ===============================
-//      APP INIT
-//   =============================== */
+//   /* ================= APP INIT ================= */
 
 //   async onModuleInit() {
 //     this.logger.log('🚀 IMAP Sync Engine Started');
@@ -50,9 +71,7 @@
 //     }
 //   }
 
-//   /* ===============================
-//      CONNECT MAILBOX
-//   =============================== */
+//   /* ================= CONNECT MAILBOX ================= */
 
 //   private async startMailbox(box: any) {
 //     if (!box.imap_password) return;
@@ -69,7 +88,6 @@
 //     });
 
 //     client.on('exists', () => {
-//       // ✅ SAFE: IMAP → DB → SOCKET
 //       setTimeout(() => this.syncInbox(box.id, true), 1500);
 //     });
 
@@ -89,9 +107,7 @@
 //     setTimeout(() => this.startMailbox(box).catch(() => null), 30_000);
 //   }
 
-//   /* ===============================
-//      HEALTH CHECK (ONLY IMAP)
-//   =============================== */
+//   /* ================= HEALTH CHECK ================= */
 
 //   @Cron(CronExpression.EVERY_30_SECONDS)
 //   async ensureHealthyConnections() {
@@ -99,7 +115,6 @@
 
 //     for (const box of mailboxes) {
 //       const client = this.clients.get(box.id);
-
 //       if (!client || !client.usable) {
 //         await this.startMailbox(box);
 //       } else {
@@ -108,9 +123,7 @@
 //     }
 //   }
 
-//   /* ===============================
-//      SYNC INBOX (LOCKED)
-//   =============================== */
+//   /* ================= SYNC INBOX ================= */
 
 //   async syncInbox(mailboxId: number, force = false) {
 //     const now = Date.now();
@@ -120,7 +133,7 @@
 //     if (this.syncing.has(mailboxId)) return;
 
 //     this.lastSyncAt.set(mailboxId, now);
-//     this.syncing.add(mailboxId); // ✅ LOCK
+//     this.syncing.add(mailboxId);
 
 //     try {
 //       const box = await this.prisma.mailbox.findUnique({
@@ -140,22 +153,15 @@
 //         await this.processEmail(box, msg);
 //       }
 //     } finally {
-//       this.syncing.delete(mailboxId); // ✅ UNLOCK
+//       this.syncing.delete(mailboxId);
 //     }
 //   }
 
-//   /* ===============================
-//      PROCESS EMAIL
-//   =============================== */
+//   /* ================= PROCESS EMAIL ================= */
 
 //   private async processEmail(box: any, msg: any) {
 //     const uid = Number(msg.uid);
 //     if (!uid) return;
-
-//     const exists = await this.prisma.email.findFirst({
-//       where: { mailbox_id: box.id, imap_uid: uid },
-//     });
-//     if (exists) return;
 
 //     const parsed = await simpleParser(msg.source);
 //     const from = parsed.from?.value?.[0]?.address?.toLowerCase();
@@ -170,13 +176,26 @@
 //         ? parsed.html
 //         : parsed.html?.toString() || '';
 
-//     const body_text = cleanEmailText(
-//       htmlToText(rawHtml, { wordwrap: false }) || parsed.text || '',
-//     );
+//     /* ================= body_text FIX (ONLY CHANGE) ================= */
 
-//     const body_html = rawHtml || `<p>${body_text}</p>`;
+//     let text =
+//       htmlToText(rawHtml, {
+//         wordwrap: false,
+//         selectors: [
+//           { selector: 'img', format: 'skip' },
+//           { selector: 'a', options: { ignoreHref: true } },
+//         ],
+//       }) ||
+//       parsed.text ||
+//       '';
 
-//     /* ================= SAVE CUSTOMER ================= */
+//     text = cleanEmailText(text);
+//     text = stripSignature(text);
+
+//     const body_text = text;
+//     // const body_html = rawHtml || `<p>${body_text}</p>`;
+
+//     /* ================= CUSTOMER ================= */
 
 //     const senderName = parsed.from?.value?.[0]?.name || getNameFromEmail(from);
 
@@ -203,6 +222,11 @@
 //       where: { mailbox_id: box.id, customer_id: customer.id },
 //     });
 
+//     if (thread) {
+//       // ✅ ADDED: SAME THREAD LOG (as requested)
+//       console.log(`📨 Same thread mail received → thread_id=${thread.id}`);
+//     }
+
 //     if (!thread) {
 //       thread = await this.prisma.emailThread.create({
 //         data: {
@@ -217,27 +241,35 @@
 
 //     /* ================= SAVE EMAIL ================= */
 
-//     const email = await this.prisma.email.create({
-//       data: {
-//         business_id: box.business_id,
-//         user_id: box.user_id,
-//         mailbox_id: box.id,
-//         thread_id: thread.id,
-//         imap_uid: uid,
-//         message_id: parsed.messageId,
-//         in_reply_to: parsed.inReplyTo,
-//         references: normalizeReferences(parsed.references),
-//         from_address: from,
-//         subject,
-//         body_html,
-//         body_text,
-//         folder: 'INBOX',
-//         received_at: new Date(),
-//       },
-//     });
+//     let email;
+//     try {
+//       email = await this.prisma.email.create({
+//         data: {
+//           business_id: box.business_id,
+//           user_id: box.user_id,
+//           mailbox_id: box.id,
+//           thread_id: thread.id,
+//           imap_uid: uid,
+//           message_id: parsed.messageId,
+//           in_reply_to: parsed.inReplyTo,
+//           references: normalizeReferences(parsed.references),
+//           from_address: from,
+//           subject,
+//           // body_html,
+//           body_text,
+//           folder: 'INBOX',
+//           received_at: new Date(),
+//         },
+//       });
+//     } catch (e: any) {
+//       if (e.code === 'P2002') {
+//         return;
+//       }
+//       throw e;
+//     }
 
 //     /* ================= SOCKET EMIT ================= */
-//     // ✅ CHANGED: ONLY EMIT (NO LOGIC)
+
 //     this.socket.emitToMailbox(box.id, 'email:new', {
 //       mailbox_id: box.id,
 //       thread_id: thread.id,
@@ -251,6 +283,7 @@
 //     this.logger.log(`📩 IMAP saved → ${from}`);
 //   }
 // }
+
 import {
   Injectable,
   Logger,
@@ -265,16 +298,12 @@ import { htmlToText } from 'html-to-text';
 import { cleanEmailText } from '../../common/utils/clean-email-text';
 import { isProfessionalHumanEmail } from '../utils/email-filter';
 import { normalizeReferences } from 'src/common/utils/normalizeReferences';
-import { Prisma } from '@prisma/client';
 
-import * as fs from 'fs';
-import { join, extname } from 'path';
 import getNameFromEmail from 'src/config/getNameFromEmail';
 import { SocketService } from 'src/socket/socket.service';
 
 /* ===============================
-   🔧 SIGNATURE STRIPPER (ADDED)
-   ONLY USED FOR body_text
+   🔧 SIGNATURE STRIPPER
 =============================== */
 function stripSignature(text: string): string {
   const patterns = [
@@ -287,11 +316,8 @@ function stripSignature(text: string): string {
   ];
 
   for (const p of patterns) {
-    if (p.test(text)) {
-      return text.replace(p, '').trim();
-    }
+    if (p.test(text)) return text.replace(p, '').trim();
   }
-
   return text.trim();
 }
 
@@ -307,14 +333,15 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly socket: SocketService,
   ) {}
 
-  /* ================= APP INIT ================= */
+  /* ================= INIT ================= */
 
   async onModuleInit() {
     this.logger.log('🚀 IMAP Sync Engine Started');
 
     const mailboxes = await this.prisma.mailbox.findMany();
     for (const box of mailboxes) {
-      await this.startMailbox(box);
+      // 🔧 FIX: one mailbox fail → server safe
+      this.startMailbox(box).catch(() => null);
     }
   }
 
@@ -324,10 +351,10 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /* ================= CONNECT MAILBOX ================= */
+  /* ================= CONNECT ================= */
 
   private async startMailbox(box: any) {
-    if (!box.imap_password) return;
+    if (!box.imap_host || !box.imap_port || !box.imap_password) return;
 
     const client = new ImapFlow({
       host: box.imap_host,
@@ -344,11 +371,25 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
       setTimeout(() => this.syncInbox(box.id, true), 1500);
     });
 
-    client.on('error', () => this.reconnect(box));
+    // 🔧 FIX: log error but do NOT crash
+    client.on('error', (err) => {
+      this.logger.warn(`IMAP error mailbox=${box.id}: ${err.message}`);
+      this.reconnect(box);
+    });
+
     client.on('close', () => this.reconnect(box));
 
-    await client.connect();
-    await client.mailboxOpen('INBOX');
+    // 🔧 FIX: critical try/catch
+    try {
+      await client.connect();
+      await client.mailboxOpen('INBOX');
+    } catch (err: any) {
+      this.logger.error(
+        `❌ IMAP connect failed mailbox=${box.id}`,
+        err.message,
+      );
+      return; // 🔥 server stays alive
+    }
 
     this.clients.set(box.id, client);
     await this.syncInbox(box.id, true);
@@ -357,26 +398,34 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   private reconnect(box: any) {
-    setTimeout(() => this.startMailbox(box).catch(() => null), 30_000);
+    setTimeout(() => {
+      // 🔧 FIX: safe reconnect
+      this.startMailbox(box).catch(() => null);
+    }, 30_000);
   }
 
-  /* ================= HEALTH CHECK ================= */
+  /* ================= HEALTH ================= */
 
   @Cron(CronExpression.EVERY_30_SECONDS)
   async ensureHealthyConnections() {
     const mailboxes = await this.prisma.mailbox.findMany();
 
     for (const box of mailboxes) {
-      const client = this.clients.get(box.id);
-      if (!client || !client.usable) {
-        await this.startMailbox(box);
-      } else {
-        await this.syncInbox(box.id);
+      try {
+        const client = this.clients.get(box.id);
+        if (!client || !client.usable) {
+          await this.startMailbox(box);
+        } else {
+          await this.syncInbox(box.id);
+        }
+      } catch {
+        // 🔧 FIX: Cron never crashes server
+        continue;
       }
     }
   }
 
-  /* ================= SYNC INBOX ================= */
+  /* ================= SYNC ================= */
 
   async syncInbox(mailboxId: number, force = false) {
     const now = Date.now();
@@ -410,7 +459,7 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /* ================= PROCESS EMAIL ================= */
+  /* ================= PROCESS ================= */
 
   private async processEmail(box: any, msg: any) {
     const uid = Number(msg.uid);
@@ -429,8 +478,6 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
         ? parsed.html
         : parsed.html?.toString() || '';
 
-    /* ================= body_text FIX (ONLY CHANGE) ================= */
-
     let text =
       htmlToText(rawHtml, {
         wordwrap: false,
@@ -446,9 +493,6 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
     text = stripSignature(text);
 
     const body_text = text;
-    // const body_html = rawHtml || `<p>${body_text}</p>`;
-
-    /* ================= CUSTOMER ================= */
 
     const senderName = parsed.from?.value?.[0]?.name || getNameFromEmail(from);
 
@@ -469,14 +513,11 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    /* ================= THREAD ================= */
-
     let thread = await this.prisma.emailThread.findFirst({
       where: { mailbox_id: box.id, customer_id: customer.id },
     });
 
     if (thread) {
-      // ✅ ADDED: SAME THREAD LOG (as requested)
       console.log(`📨 Same thread mail received → thread_id=${thread.id}`);
     }
 
@@ -492,11 +533,8 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    /* ================= SAVE EMAIL ================= */
-
-    let email;
     try {
-      email = await this.prisma.email.create({
+      const email = await this.prisma.email.create({
         data: {
           business_id: box.business_id,
           user_id: box.user_id,
@@ -508,31 +546,26 @@ export class ImapSyncService implements OnModuleInit, OnModuleDestroy {
           references: normalizeReferences(parsed.references),
           from_address: from,
           subject,
-          // body_html,
           body_text,
           folder: 'INBOX',
           received_at: new Date(),
         },
       });
+
+      this.socket.emitToMailbox(box.id, 'email:new', {
+        mailbox_id: box.id,
+        thread_id: thread.id,
+        email_id: email.id,
+        from,
+        subject,
+        snippet: body_text.slice(0, 120),
+        received_at: email.received_at,
+      });
+
+      this.logger.log(`📩 IMAP saved → ${from}`);
     } catch (e: any) {
-      if (e.code === 'P2002') {
-        return;
-      }
+      if (e.code === 'P2002') return;
       throw e;
     }
-
-    /* ================= SOCKET EMIT ================= */
-
-    this.socket.emitToMailbox(box.id, 'email:new', {
-      mailbox_id: box.id,
-      thread_id: thread.id,
-      email_id: email.id,
-      from,
-      subject,
-      snippet: body_text.slice(0, 120),
-      received_at: email.received_at,
-    });
-
-    this.logger.log(`📩 IMAP saved → ${from}`);
   }
 }

@@ -1,13 +1,25 @@
-// import { Injectable, InternalServerErrorException } from '@nestjs/common';
+// import {
+//   Injectable,
+//   InternalServerErrorException,
+//   Logger,
+//   OnModuleDestroy,
+// } from '@nestjs/common';
 // import { PrismaService } from 'prisma/prisma.service';
-// import { htmlToText } from 'html-to-text';
-// import { cleanEmailText } from '../../common/utils/clean-email-text';
 // import { createSmtpTransporterFromDb } from 'src/config/smtp.config';
 // import getNameFromEmail from 'src/config/getNameFromEmail';
+// import { SocketService } from 'src/socket/socket.service';
 
 // @Injectable()
-// export class SmtpService {
-//   constructor(private prisma: PrismaService) {}
+// export class SmtpService implements OnModuleDestroy {
+//   private logger = new Logger('SMTP');
+
+//   constructor(
+//     private prisma: PrismaService,
+//     private socketService: SocketService,
+//   ) {}
+
+//   // 🔧 CHANGED: cache SMTP transporters per mailbox
+//   private transporters = new Map<number, any>();
 
 //   /* ================= SEND / REPLY / FORWARD ================= */
 //   async sendMail(payload: {
@@ -16,7 +28,7 @@
 //     cc?: string | string[];
 //     bcc?: string | string[];
 //     subject?: string;
-//     text?: string; // ✅ TEXT ONLY
+//     text?: string; // TEXT ONLY
 //     reply_message_id?: number;
 //     forward_message_id?: number;
 //     files?: Express.Multer.File[];
@@ -32,13 +44,13 @@
 //       const mailbox = await this.prisma.mailbox.findUnique({
 //         where: { id: payload.mailbox_id },
 //       });
+
 //       if (!mailbox) throw new Error('Mailbox not found');
 //       if (!mailbox.smtp_host || !mailbox.smtp_port || !mailbox.smtp_password) {
 //         throw new Error('SMTP config missing');
 //       }
 
 //       /* ================= CUSTOMER ================= */
-
 //       const customerName = getNameFromEmail(customerEmail);
 
 //       const customer = await this.prisma.customer.upsert({
@@ -58,7 +70,7 @@
 //         },
 //       });
 
-//       /* ================= THREAD (ONE CUSTOMER = ONE THREAD) ================= */
+//       /* ================= THREAD ================= */
 //       let thread = await this.prisma.emailThread.findFirst({
 //         where: {
 //           mailbox_id: mailbox.id,
@@ -123,18 +135,23 @@
 // ${original.body_text ?? ''}`;
 //       }
 
-//       /* 🔒 FINAL GUARANTEE */
 //       if (!finalText || !finalText.trim()) {
 //         finalText = '(no message body)';
 //       }
 
-//       /* ================= SMTP ================= */
-//       const transporter = createSmtpTransporterFromDb({
-//         smtp_host: mailbox.smtp_host,
-//         smtp_port: mailbox.smtp_port,
-//         smtp_password: mailbox.smtp_password,
-//         email_address: mailbox.email_address,
-//       });
+//       /* ================= SMTP TRANSPORTER ================= */
+//       let transporter = this.transporters.get(mailbox.id);
+
+//       if (!transporter) {
+//         transporter = createSmtpTransporterFromDb({
+//           smtp_host: mailbox.smtp_host,
+//           smtp_port: mailbox.smtp_port,
+//           smtp_password: mailbox.smtp_password,
+//           email_address: mailbox.email_address,
+//         });
+
+//         this.transporters.set(mailbox.id, transporter);
+//       }
 
 //       const smtpAttachments =
 //         payload.files?.map((file) => ({
@@ -143,15 +160,21 @@
 //           contentType: file.mimetype,
 //         })) || [];
 
-//       const info = await transporter.sendMail({
-//         from: mailbox.email_address,
-//         to: toList,
-//         cc: payload.cc,
-//         bcc: payload.bcc,
-//         subject,
-//         text: finalText, // ✅ TEXT ONLY
-//         attachments: smtpAttachments,
-//       });
+//       /* ================= SEND MAIL (WITH TIMEOUT) ================= */
+//       const info: any = await Promise.race([
+//         transporter.sendMail({
+//           from: `"${mailbox.email_address}" <${mailbox.email_address}>`,
+//           to: toList,
+//           cc: payload.cc,
+//           bcc: payload.bcc,
+//           subject,
+//           text: finalText,
+//           attachments: smtpAttachments,
+//         }),
+//         new Promise((_, reject) =>
+//           setTimeout(() => reject(new Error('SMTP timeout')), 15_000),
+//         ),
+//       ]);
 
 //       /* ================= SAVE EMAIL ================= */
 //       const email = await this.prisma.email.create({
@@ -164,7 +187,7 @@
 //           subject,
 //           from_address: mailbox.email_address,
 
-//           to_addresses: toList,
+//           to_addresses: [...toList],
 //           cc_addresses: payload.cc
 //             ? Array.isArray(payload.cc)
 //               ? payload.cc
@@ -176,8 +199,8 @@
 //               : [payload.bcc]
 //             : [],
 
-//           body_text: finalText, // ✅ ALWAYS SAVED
-//           body_html: null,
+//           body_text: finalText,
+//           // body_html: null,
 //           folder: 'SENT',
 //           sent_at: new Date(),
 //           message_id: info.messageId,
@@ -208,6 +231,24 @@
 //         },
 //       });
 
+//       /* ================= 🔔 SOCKET (SAFE) ================= */
+//       try {
+//         this.socketService.emit('email:sent', {
+//           mailbox_id: mailbox.id,
+//           thread_id: thread.id,
+//           email_id: email.id,
+//           subject: email.subject,
+//           sent_at: email.sent_at,
+//         });
+
+//         this.socketService.emit('thread:updated', {
+//           thread_id: thread.id,
+//           last_message_at: new Date(),
+//         });
+//       } catch (e) {
+//         this.logger.warn('Socket emit failed (ignored)');
+//       }
+
 //       return {
 //         success: true,
 //         messageId: info.messageId,
@@ -222,7 +263,7 @@
 //   async saveDraft(payload: {
 //     mailbox_id: number;
 //     subject?: string;
-//     text?: string; // ✅ TEXT ONLY
+//     text?: string;
 //     files?: Express.Multer.File[];
 //   }) {
 //     const mailbox = await this.prisma.mailbox.findUnique({
@@ -242,7 +283,7 @@
 //         user_id: mailbox.user_id,
 //         subject: payload.subject ?? '(no subject)',
 //         body_text: bodyText,
-//         body_html: null,
+//         // body_html: null,
 //         folder: 'DRAFT',
 //       },
 //     });
@@ -262,6 +303,15 @@
 //     }
 
 //     return draft;
+//   }
+
+//   /* ================= SHUTDOWN CLEANUP ================= */
+//   async onModuleDestroy() {
+//     for (const transporter of this.transporters.values()) {
+//       try {
+//         transporter.close?.();
+//       } catch {}
+//     }
 //   }
 // }
 
@@ -285,7 +335,7 @@ export class SmtpService implements OnModuleDestroy {
     private socketService: SocketService,
   ) {}
 
-  // 🔧 CHANGED: cache SMTP transporters per mailbox
+  // cache SMTP transporters per mailbox
   private transporters = new Map<number, any>();
 
   /* ================= SEND / REPLY / FORWARD ================= */
@@ -295,7 +345,7 @@ export class SmtpService implements OnModuleDestroy {
     cc?: string | string[];
     bcc?: string | string[];
     subject?: string;
-    text?: string; // TEXT ONLY
+    text?: string;
     reply_message_id?: number;
     forward_message_id?: number;
     files?: Express.Multer.File[];
@@ -313,8 +363,13 @@ export class SmtpService implements OnModuleDestroy {
       });
 
       if (!mailbox) throw new Error('Mailbox not found');
+
+      // 🔧 FIX: do NOT throw fatal error (prevents server crash)
       if (!mailbox.smtp_host || !mailbox.smtp_port || !mailbox.smtp_password) {
-        throw new Error('SMTP config missing');
+        return {
+          success: false,
+          error: 'SMTP config missing',
+        };
       }
 
       /* ================= CUSTOMER ================= */
@@ -417,6 +472,14 @@ ${original.body_text ?? ''}`;
           email_address: mailbox.email_address,
         });
 
+        // 🔧 FIX: transporter may be null → don’t crash
+        if (!transporter) {
+          return {
+            success: false,
+            error: 'Invalid SMTP configuration',
+          };
+        }
+
         this.transporters.set(mailbox.id, transporter);
       }
 
@@ -467,7 +530,6 @@ ${original.body_text ?? ''}`;
             : [],
 
           body_text: finalText,
-          // body_html: null,
           folder: 'SENT',
           sent_at: new Date(),
           message_id: info.messageId,
@@ -512,7 +574,7 @@ ${original.body_text ?? ''}`;
           thread_id: thread.id,
           last_message_at: new Date(),
         });
-      } catch (e) {
+      } catch {
         this.logger.warn('Socket emit failed (ignored)');
       }
 
@@ -522,6 +584,8 @@ ${original.body_text ?? ''}`;
         thread_id: thread.id,
       };
     } catch (err: any) {
+      // 🔧 FIX: log error but keep existing exception behavior
+      this.logger.error('SMTP sendMail failed', err.message);
       throw new InternalServerErrorException(err.message);
     }
   }
@@ -550,7 +614,6 @@ ${original.body_text ?? ''}`;
         user_id: mailbox.user_id,
         subject: payload.subject ?? '(no subject)',
         body_text: bodyText,
-        // body_html: null,
         folder: 'DRAFT',
       },
     });
