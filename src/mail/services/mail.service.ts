@@ -81,7 +81,7 @@ export class MailService {
           bcc_addresses: payload.bcc ?? [],
 
           subject: payload.subject,
-          body_html: payload.html,
+          // body_html: payload.html,
 
           folder: 'SENT',
           sent_at: new Date(),

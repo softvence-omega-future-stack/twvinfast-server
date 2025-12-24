@@ -123,7 +123,7 @@ model Email {
   cc_addresses   Json?
   bcc_addresses  Json?
   subject        String
-  body_html      String?
+  // body_html      String?
   body_text      String?
   folder         EmailFolder?
   is_read        Boolean                 @default(false)

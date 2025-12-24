@@ -467,7 +467,7 @@ ${original.body_text ?? ''}`;
             : [],
 
           body_text: finalText,
-          body_html: null,
+          // body_html: null,
           folder: 'SENT',
           sent_at: new Date(),
           message_id: info.messageId,
@@ -550,7 +550,7 @@ ${original.body_text ?? ''}`;
         user_id: mailbox.user_id,
         subject: payload.subject ?? '(no subject)',
         body_text: bodyText,
-        body_html: null,
+        // body_html: null,
         folder: 'DRAFT',
       },
     });

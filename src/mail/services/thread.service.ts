@@ -13,6 +13,107 @@ export class ThreadService {
   /* ===============================
      THREAD LIST
   =============================== */
+  // async getThreadsByMailbox(params: {
+  //   mailbox_id: number;
+  //   folder?: string;
+  //   search?: string;
+  //   status?: ThreadStatus;
+  //   tag?: number;
+  //   sort?: 'newest' | 'oldest';
+  //   page?: number;
+  //   limit?: number;
+  // }) {
+  //   const {
+  //     mailbox_id,
+  //     folder = 'inbox',
+  //     search,
+  //     status,
+  //     tag,
+  //     sort = 'newest',
+  //     page = 1,
+  //     limit = 6,
+  //   } = params;
+
+  //   const skip = (page - 1) * limit;
+
+  //   const where: Prisma.EmailThreadWhereInput = {
+  //     mailbox_id,
+  //   };
+
+  //   /* ---------- Folder ---------- */
+  //   switch (folder) {
+  //     case 'starred':
+  //       where.is_starred = true;
+  //       where.is_deleted = false;
+  //       break;
+  //     case 'archived':
+  //       where.is_archived = true;
+  //       where.is_deleted = false;
+  //       break;
+  //     case 'trash':
+  //       where.is_deleted = true;
+  //       break;
+  //     case 'unread':
+  //       where.status = ThreadStatus.NEW;
+  //       where.is_deleted = false;
+  //       where.is_archived = false;
+  //       break;
+  //     default:
+  //       where.is_deleted = false;
+  //       where.is_archived = false;
+  //   }
+
+  //   /* ---------- Search ---------- */
+  //   if (search) {
+  //     where.OR = [
+  //       { subject: { contains: search, mode: 'insensitive' } },
+  //       { customer: { email: { contains: search, mode: 'insensitive' } } },
+  //       { customer: { name: { contains: search, mode: 'insensitive' } } },
+  //     ];
+  //   }
+
+  //   /* ---------- Status ---------- */
+  //   if (status) {
+  //     where.status = status;
+  //   }
+
+  //   /* ---------- Label ---------- */
+  //   if (tag) {
+  //     where.labels = {
+  //       some: {
+  //         label_id: tag,
+  //       },
+  //     };
+  //   }
+
+  //   const total = await this.prisma.emailThread.count({ where });
+
+  //   const data = await this.prisma.emailThread.findMany({
+  //     where,
+  //     skip,
+  //     take: limit,
+  //     orderBy: {
+  //       last_message_at: sort === 'oldest' ? 'asc' : 'desc',
+  //     },
+  //     include: {
+  //       customer: true,
+  //       labels: {
+  //         include: { label: true },
+  //       },
+  //     },
+  //   });
+
+  //   return {
+  //     data,
+  //     pagination: {
+  //       total,
+  //       page,
+  //       limit,
+  //       totalPages: Math.ceil(total / limit),
+  //     },
+  //   };
+  // }
+
   async getThreadsByMailbox(params: {
     mailbox_id: number;
     folder?: string;
@@ -46,19 +147,27 @@ export class ThreadService {
         where.is_starred = true;
         where.is_deleted = false;
         break;
+
       case 'archived':
         where.is_archived = true;
         where.is_deleted = false;
         break;
+
       case 'trash':
         where.is_deleted = true;
         break;
+
       case 'unread':
         where.status = ThreadStatus.NEW;
         where.is_deleted = false;
         where.is_archived = false;
         break;
-      default:
+
+      case 'all':
+        // intentionally no extra filter
+        break;
+
+      default: // inbox
         where.is_deleted = false;
         where.is_archived = false;
     }
@@ -77,7 +186,7 @@ export class ThreadService {
       where.status = status;
     }
 
-    /* ---------- Label ---------- */
+    /* ---------- Label / Tag ---------- */
     if (tag) {
       where.labels = {
         some: {
@@ -86,8 +195,10 @@ export class ThreadService {
       };
     }
 
+    /* ---------- Total Count ---------- */
     const total = await this.prisma.emailThread.count({ where });
 
+    /* ---------- Threads + Last Mail ---------- */
     const data = await this.prisma.emailThread.findMany({
       where,
       skip,
@@ -98,11 +209,31 @@ export class ThreadService {
       include: {
         customer: true,
         labels: {
-          include: { label: true },
+          include: {
+            label: true,
+          },
+        },
+        emails: {
+          take: 1,
+          orderBy: {
+            created_at: 'desc',
+          },
+          select: {
+            id: true,
+            from_address: true,
+            to_addresses: true,
+            subject: true,
+            body_text: true,
+            // body_html: true,
+            created_at: true,
+            direction: true,
+            is_read: true,
+          },
         },
       },
     });
 
+    /* ---------- Response ---------- */
     return {
       data,
       pagination: {
