@@ -1,10 +1,310 @@
+// import { Injectable, NotFoundException } from '@nestjs/common';
+// import { PrismaService } from 'prisma/prisma.service';
+// import { ThreadStatus, Prisma } from '@prisma/client';
+
+// @Injectable()
+// export class ThreadService {
+//   constructor(private prisma: PrismaService) {}
+
+//   /* ===============================
+//      THREAD LIST
+//   =============================== */
+//   async getThreadsByMailbox(params: {
+//     mailbox_id: number;
+//     folder?: string;
+//     search?: string;
+//     status?: ThreadStatus;
+//     tag?: number; // label_id
+//     sort?: 'newest' | 'oldest';
+//     page?: number;
+//     limit?: number;
+//   }) {
+//     const {
+//       mailbox_id,
+//       folder = 'inbox',
+//       search,
+//       status,
+//       tag,
+//       sort = 'newest',
+//       page = 1,
+//       limit = 6,
+//     } = params;
+
+//     const skip = (page - 1) * limit;
+
+//     const where: Prisma.EmailThreadWhereInput = {
+//       mailbox_id,
+//     };
+
+//     /* ---------- Folder Logic ---------- */
+//     switch (folder) {
+//       case 'starred':
+//         where.is_starred = true;
+//         where.is_deleted = false;
+//         break;
+//       case 'archived':
+//         where.is_archived = true;
+//         where.is_deleted = false;
+//         break;
+//       case 'trash':
+//         where.is_deleted = true;
+//         break;
+//       case 'unread':
+//         where.status = ThreadStatus.NEW;
+//         where.is_deleted = false;
+//         break;
+//       default:
+//         where.is_archived = false;
+//         where.is_deleted = false;
+//     }
+
+//     /* ---------- Search ---------- */
+//     if (search) {
+//       where.OR = [
+//         { subject: { contains: search, mode: 'insensitive' } },
+//         { customer: { email: { contains: search, mode: 'insensitive' } } },
+//         { customer: { name: { contains: search, mode: 'insensitive' } } },
+//       ];
+//     }
+
+//     /* ---------- Status ---------- */
+//     if (status) {
+//       where.status = status;
+//     }
+
+//     /* ---------- Label Filter (PIVOT) ---------- */
+//     if (tag) {
+//       console.log(tag);
+//       where.labels = {
+//         some: {
+//           label_id: tag,
+//         },
+//       };
+//     }
+
+//     const total = await this.prisma.emailThread.count({ where });
+
+//     const data = await this.prisma.emailThread.findMany({
+//       where,
+//       skip,
+//       take: limit,
+//       orderBy: {
+//         last_message_at: sort === 'oldest' ? 'asc' : 'desc',
+//       },
+//       include: {
+//         labels: {
+//           include: {
+//             label: true,
+//           },
+//         },
+//         customer: true,
+//       },
+//     });
+
+//     return {
+//       data,
+//       pagination: {
+//         total,
+//         page,
+//         limit,
+//         totalPages: Math.ceil(total / limit),
+//       },
+//     };
+//   }
+
+//   /* ===============================
+//      COUNTS
+//   =============================== */
+//   async getThreadCounts(mailbox_id: number) {
+//     const base = { mailbox_id };
+
+//     const [inbox, starred, archived, trash, unread] = await Promise.all([
+//       this.prisma.emailThread.count({
+//         where: { ...base, is_deleted: false, is_archived: false },
+//       }),
+//       this.prisma.emailThread.count({
+//         where: { ...base, is_starred: true, is_deleted: false },
+//       }),
+//       this.prisma.emailThread.count({
+//         where: { ...base, is_archived: true, is_deleted: false },
+//       }),
+//       this.prisma.emailThread.count({
+//         where: { ...base, is_deleted: true },
+//       }),
+//       this.prisma.emailThread.count({
+//         where: { ...base, status: ThreadStatus.NEW, is_deleted: false },
+//       }),
+//     ]);
+
+//     return { inbox, starred, archived, trash, unread };
+//   }
+
+//   /* ===============================
+//      SINGLE THREAD
+//   =============================== */
+//   async getThreadWithEmails(thread_id: number) {
+//     const thread = await this.prisma.emailThread.findUnique({
+//       where: { id: thread_id },
+//       include: {
+//         emails: true,
+//         labels: {
+//           include: { label: true },
+//         },
+//       },
+//     });
+
+//     if (!thread) {
+//       throw new NotFoundException('Thread not found');
+//     }
+
+//     return thread;
+//   }
+
+//   /* ===============================
+//      READ / UNREAD
+//   =============================== */
+//   async markThreadRead(thread_id: number) {
+//     await this.prisma.email.updateMany({
+//       where: { thread_id },
+//       data: { is_read: true },
+//     });
+
+//     await this.prisma.emailThread.update({
+//       where: { id: thread_id },
+//       data: { status: ThreadStatus.OPENED },
+//     });
+
+//     return { success: true };
+//   }
+
+//   async markThreadUnread(thread_id: number) {
+//     await this.prisma.email.updateMany({
+//       where: { thread_id },
+//       data: { is_read: false },
+//     });
+
+//     await this.prisma.emailThread.update({
+//       where: { id: thread_id },
+//       data: { status: ThreadStatus.NEW },
+//     });
+
+//     return { success: true };
+//   }
+
+//   /* ===============================
+//      ARCHIVE
+//   =============================== */
+//   archiveThread(id: number) {
+//     return this.prisma.emailThread.update({
+//       where: { id, is_deleted: false },
+//       data: { is_archived: true },
+//     });
+//   }
+
+//   unarchiveThread(id: number) {
+//     return this.prisma.emailThread.update({
+//       where: { id, is_deleted: false },
+//       data: { is_archived: false },
+//     });
+//   }
+
+//   //
+//   /* ===============================
+//    TRASH
+// =============================== */
+//   async moveToTrash(thread_id: number) {
+//     const thread = await this.prisma.emailThread.findUnique({
+//       where: { id: thread_id },
+//     });
+
+//     if (!thread) {
+//       throw new NotFoundException('Thread not found');
+//     }
+
+//     return this.prisma.emailThread.update({
+//       where: { id: thread_id },
+//       data: {
+//         is_deleted: true,
+//         is_archived: false, // trash মানে archive না
+//       },
+//     });
+//   }
+
+//   async restoreFromTrash(thread_id: number) {
+//     const thread = await this.prisma.emailThread.findUnique({
+//       where: { id: thread_id },
+//     });
+
+//     if (!thread) {
+//       throw new NotFoundException('Thread not found');
+//     }
+
+//     return this.prisma.emailThread.update({
+//       where: { id: thread_id },
+//       data: {
+//         is_deleted: false,
+//         is_archived: false,
+//       },
+//     });
+//   }
+//   /* ===============================
+//    BULK STAR / UNSTAR
+// =============================== */
+
+//   async bulkStar(ids: number[]) {
+//     if (!ids || ids.length === 0) {
+//       return { success: false, message: 'No thread ids provided' };
+//     }
+
+//     await this.prisma.emailThread.updateMany({
+//       where: {
+//         id: { in: ids },
+//         is_deleted: false,
+//       },
+//       data: {
+//         is_starred: true,
+//       },
+//     });
+
+//     return {
+//       success: true,
+//       starred_count: ids.length,
+//     };
+//   }
+
+//   async bulkUnstar(ids: number[]) {
+//     if (!ids || ids.length === 0) {
+//       return { success: false, message: 'No thread ids provided' };
+//     }
+
+//     await this.prisma.emailThread.updateMany({
+//       where: {
+//         id: { in: ids },
+//         is_deleted: false,
+//       },
+//       data: {
+//         is_starred: false,
+//       },
+//     });
+
+//     return {
+//       success: true,
+//       unstarred_count: ids.length,
+//     };
+//   }
+// }
+
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { ThreadStatus, Prisma } from '@prisma/client';
+import { SocketService } from 'src/socket/socket.service';
 
 @Injectable()
 export class ThreadService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private socket: SocketService,
+  ) {}
 
   /* ===============================
      THREAD LIST
@@ -14,7 +314,7 @@ export class ThreadService {
     folder?: string;
     search?: string;
     status?: ThreadStatus;
-    tag?: number; // label_id
+    tag?: number;
     sort?: 'newest' | 'oldest';
     page?: number;
     limit?: number;
@@ -36,7 +336,7 @@ export class ThreadService {
       mailbox_id,
     };
 
-    /* ---------- Folder Logic ---------- */
+    /* ---------- Folder ---------- */
     switch (folder) {
       case 'starred':
         where.is_starred = true;
@@ -52,10 +352,11 @@ export class ThreadService {
       case 'unread':
         where.status = ThreadStatus.NEW;
         where.is_deleted = false;
+        where.is_archived = false;
         break;
       default:
-        where.is_archived = false;
         where.is_deleted = false;
+        where.is_archived = false;
     }
 
     /* ---------- Search ---------- */
@@ -72,9 +373,8 @@ export class ThreadService {
       where.status = status;
     }
 
-    /* ---------- Label Filter (PIVOT) ---------- */
+    /* ---------- Label ---------- */
     if (tag) {
-      console.log(tag);
       where.labels = {
         some: {
           label_id: tag,
@@ -92,12 +392,10 @@ export class ThreadService {
         last_message_at: sort === 'oldest' ? 'asc' : 'desc',
       },
       include: {
-        labels: {
-          include: {
-            label: true,
-          },
-        },
         customer: true,
+        labels: {
+          include: { label: true },
+        },
       },
     });
 
@@ -113,26 +411,50 @@ export class ThreadService {
   }
 
   /* ===============================
-     COUNTS
+     COUNTS (FIXED)
   =============================== */
   async getThreadCounts(mailbox_id: number) {
+    if (!mailbox_id) {
+      throw new NotFoundException('mailbox_id missing');
+    }
+
     const base = { mailbox_id };
 
     const [inbox, starred, archived, trash, unread] = await Promise.all([
       this.prisma.emailThread.count({
-        where: { ...base, is_deleted: false, is_archived: false },
+        where: {
+          ...base,
+          is_deleted: false,
+          is_archived: false,
+        },
       }),
       this.prisma.emailThread.count({
-        where: { ...base, is_starred: true, is_deleted: false },
+        where: {
+          ...base,
+          is_starred: true,
+          is_deleted: false,
+        },
       }),
       this.prisma.emailThread.count({
-        where: { ...base, is_archived: true, is_deleted: false },
+        where: {
+          ...base,
+          is_archived: true,
+          is_deleted: false,
+        },
       }),
       this.prisma.emailThread.count({
-        where: { ...base, is_deleted: true },
+        where: {
+          ...base,
+          is_deleted: true,
+        },
       }),
       this.prisma.emailThread.count({
-        where: { ...base, status: ThreadStatus.NEW, is_deleted: false },
+        where: {
+          ...base,
+          status: ThreadStatus.NEW,
+          is_deleted: false,
+          is_archived: false,
+        },
       }),
     ]);
 
@@ -147,16 +469,11 @@ export class ThreadService {
       where: { id: thread_id },
       include: {
         emails: true,
-        labels: {
-          include: { label: true },
-        },
+        labels: { include: { label: true } },
       },
     });
 
-    if (!thread) {
-      throw new NotFoundException('Thread not found');
-    }
-
+    if (!thread) throw new NotFoundException('Thread not found');
     return thread;
   }
 
@@ -164,132 +481,163 @@ export class ThreadService {
      READ / UNREAD
   =============================== */
   async markThreadRead(thread_id: number) {
+    const thread = await this.prisma.emailThread.update({
+      where: { id: thread_id },
+      data: { status: ThreadStatus.OPENED },
+    });
+
     await this.prisma.email.updateMany({
       where: { thread_id },
       data: { is_read: true },
     });
 
-    await this.prisma.emailThread.update({
-      where: { id: thread_id },
-      data: { status: ThreadStatus.OPENED },
-    });
-
+    this.socket.emitToMailbox(thread.mailbox_id, 'thread:read', { thread_id });
     return { success: true };
   }
 
   async markThreadUnread(thread_id: number) {
+    const thread = await this.prisma.emailThread.update({
+      where: { id: thread_id },
+      data: { status: ThreadStatus.NEW },
+    });
+
     await this.prisma.email.updateMany({
       where: { thread_id },
       data: { is_read: false },
     });
 
-    await this.prisma.emailThread.update({
-      where: { id: thread_id },
-      data: { status: ThreadStatus.NEW },
+    this.socket.emitToMailbox(thread.mailbox_id, 'thread:unread', {
+      thread_id,
     });
-
     return { success: true };
   }
 
   /* ===============================
-     ARCHIVE
+     ARCHIVE / UNARCHIVE
   =============================== */
-  archiveThread(id: number) {
-    return this.prisma.emailThread.update({
+  async archiveThread(id: number) {
+    const thread = await this.prisma.emailThread.update({
       where: { id, is_deleted: false },
-      data: { is_archived: true },
+      data: {
+        is_archived: true,
+        status: ThreadStatus.OPENED,
+      },
     });
+
+    this.socket.emitToMailbox(thread.mailbox_id, 'thread:archived', {
+      thread_id: id,
+    });
+
+    return thread;
   }
 
-  unarchiveThread(id: number) {
-    return this.prisma.emailThread.update({
+  async unarchiveThread(id: number) {
+    const thread = await this.prisma.emailThread.update({
       where: { id, is_deleted: false },
       data: { is_archived: false },
     });
-  }
 
-  //
-  /* ===============================
-   TRASH
-=============================== */
-  async moveToTrash(thread_id: number) {
-    const thread = await this.prisma.emailThread.findUnique({
-      where: { id: thread_id },
+    this.socket.emitToMailbox(thread.mailbox_id, 'thread:unarchived', {
+      thread_id: id,
     });
 
-    if (!thread) {
-      throw new NotFoundException('Thread not found');
-    }
+    return thread;
+  }
 
-    return this.prisma.emailThread.update({
+  /* ===============================
+     TRASH / RESTORE
+  =============================== */
+  async moveToTrash(thread_id: number) {
+    const thread = await this.prisma.emailThread.update({
       where: { id: thread_id },
       data: {
         is_deleted: true,
-        is_archived: false, // trash মানে archive না
+        is_archived: false,
+        status: ThreadStatus.OPENED,
       },
     });
+
+    this.socket.emitToMailbox(thread.mailbox_id, 'thread:trashed', {
+      thread_id,
+    });
+
+    return thread;
   }
 
   async restoreFromTrash(thread_id: number) {
-    const thread = await this.prisma.emailThread.findUnique({
-      where: { id: thread_id },
-    });
-
-    if (!thread) {
-      throw new NotFoundException('Thread not found');
-    }
-
-    return this.prisma.emailThread.update({
+    const thread = await this.prisma.emailThread.update({
       where: { id: thread_id },
       data: {
         is_deleted: false,
         is_archived: false,
       },
     });
-  }
-  /* ===============================
-   BULK STAR / UNSTAR
-=============================== */
 
-  async bulkStar(ids: number[]) {
-    if (!ids || ids.length === 0) {
-      return { success: false, message: 'No thread ids provided' };
-    }
-
-    await this.prisma.emailThread.updateMany({
-      where: {
-        id: { in: ids },
-        is_deleted: false,
-      },
-      data: {
-        is_starred: true,
-      },
+    this.socket.emitToMailbox(thread.mailbox_id, 'thread:restored', {
+      thread_id,
     });
 
-    return {
-      success: true,
-      starred_count: ids.length,
-    };
+    return thread;
+  }
+
+  /* ===============================
+     BULK STAR / UNSTAR
+  =============================== */
+  async bulkStar(ids: number[]) {
+    if (!ids?.length) return { success: false };
+
+    const threads = await this.prisma.emailThread.findMany({
+      where: { id: { in: ids } },
+    });
+
+    await this.prisma.emailThread.updateMany({
+      where: { id: { in: ids }, is_deleted: false },
+      data: { is_starred: true },
+    });
+
+    const mailboxMap = new Map<number, number[]>();
+    threads.forEach((t) => {
+      mailboxMap.set(t.mailbox_id, [
+        ...(mailboxMap.get(t.mailbox_id) || []),
+        t.id,
+      ]);
+    });
+
+    mailboxMap.forEach((threadIds, mailboxId) => {
+      this.socket.emitToMailbox(mailboxId, 'thread:starred', {
+        thread_ids: threadIds,
+      });
+    });
+
+    return { success: true };
   }
 
   async bulkUnstar(ids: number[]) {
-    if (!ids || ids.length === 0) {
-      return { success: false, message: 'No thread ids provided' };
-    }
+    if (!ids?.length) return { success: false };
 
-    await this.prisma.emailThread.updateMany({
-      where: {
-        id: { in: ids },
-        is_deleted: false,
-      },
-      data: {
-        is_starred: false,
-      },
+    const threads = await this.prisma.emailThread.findMany({
+      where: { id: { in: ids } },
     });
 
-    return {
-      success: true,
-      unstarred_count: ids.length,
-    };
+    await this.prisma.emailThread.updateMany({
+      where: { id: { in: ids }, is_deleted: false },
+      data: { is_starred: false },
+    });
+
+    const mailboxMap = new Map<number, number[]>();
+    threads.forEach((t) => {
+      mailboxMap.set(t.mailbox_id, [
+        ...(mailboxMap.get(t.mailbox_id) || []),
+        t.id,
+      ]);
+    });
+
+    mailboxMap.forEach((threadIds, mailboxId) => {
+      this.socket.emitToMailbox(mailboxId, 'thread:unstarred', {
+        thread_ids: threadIds,
+      });
+    });
+
+    return { success: true };
   }
 }

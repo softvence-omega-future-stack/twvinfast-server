@@ -268,15 +268,22 @@
 import {
   Injectable,
   InternalServerErrorException,
+  Logger,
   OnModuleDestroy,
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { createSmtpTransporterFromDb } from 'src/config/smtp.config';
 import getNameFromEmail from 'src/config/getNameFromEmail';
+import { SocketService } from 'src/socket/socket.service';
 
 @Injectable()
 export class SmtpService implements OnModuleDestroy {
-  constructor(private prisma: PrismaService) {}
+  private logger = new Logger('SMTP');
+
+  constructor(
+    private prisma: PrismaService,
+    private socketService: SocketService,
+  ) {}
 
   // 🔧 CHANGED: cache SMTP transporters per mailbox
   private transporters = new Map<number, any>();
@@ -490,6 +497,24 @@ ${original.body_text ?? ''}`;
           last_message_id: info.messageId,
         },
       });
+
+      /* ================= 🔔 SOCKET (SAFE) ================= */
+      try {
+        this.socketService.emit('email:sent', {
+          mailbox_id: mailbox.id,
+          thread_id: thread.id,
+          email_id: email.id,
+          subject: email.subject,
+          sent_at: email.sent_at,
+        });
+
+        this.socketService.emit('thread:updated', {
+          thread_id: thread.id,
+          last_message_at: new Date(),
+        });
+      } catch (e) {
+        this.logger.warn('Socket emit failed (ignored)');
+      }
 
       return {
         success: true,
