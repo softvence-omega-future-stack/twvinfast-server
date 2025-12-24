@@ -14,6 +14,23 @@ import { ThreadStatus } from '@prisma/client';
 export class ThreadController {
   constructor(private readonly threadService: ThreadService) {}
 
+  //
+  @Get('business/:businessId')
+  getThreadsByBusiness(
+    @Param('businessId', ParseIntPipe) businessId: number,
+    @Query('search') search?: string,
+    @Query('status') status?: ThreadStatus,
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+  ) {
+    return this.threadService.getThreadsByBusiness({
+      business_id: businessId,
+      search,
+      status,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  }
   /* ===============================
      THREAD LIST
   =============================== */

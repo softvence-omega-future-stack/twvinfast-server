@@ -48,4 +48,8 @@ export class UsersController {
   deleteUser(@Param('userId') id: string) {
     return this.users.deleteUser(Number(id));
   }
+
+
+  // admin part
+  
 }

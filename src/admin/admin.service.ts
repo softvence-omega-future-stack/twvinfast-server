@@ -5,4 +5,7 @@ export class AdminService {
   getStatus() {
     return { status: 'admin-service-ok' };
   }
+
+
+  
 }

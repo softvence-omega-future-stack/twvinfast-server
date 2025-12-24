@@ -289,4 +289,103 @@ export class UserService {
 
     return clean;
   }
+
+  // admin part
+  async getOverview() {
+    const [totalUsers, adminCount, aiResponses] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.user.count({
+        where: { role: { name: 'ADMIN' } },
+      }),
+      this.prisma.aiGeneratedReply.count(),
+    ]);
+
+    return {
+      totalUsers,
+      adminCount,
+      aiResponses,
+    };
+  }
+
+  async getRecentActivities() {
+    const [users, logins, aiReplies, emails] = await Promise.all([
+      this.prisma.user.findMany({
+        orderBy: { created_at: 'desc' },
+        take: 3,
+        select: { name: true, created_at: true },
+      }),
+      this.prisma.user.findMany({
+        where: { last_login_at: { not: null } },
+        orderBy: { last_login_at: 'desc' },
+        take: 3,
+        select: { name: true, last_login_at: true },
+      }),
+      this.prisma.aiGeneratedReply.findMany({
+        orderBy: { created_at: 'desc' },
+        take: 3,
+        select: { created_at: true },
+      }),
+      this.prisma.email.findMany({
+        where: { received_at: { not: null } },
+        orderBy: { received_at: 'desc' },
+        take: 3,
+        select: { subject: true, received_at: true },
+      }),
+    ]);
+
+    return [
+      ...users.map((u) => ({
+        text: `${u.name} created a new account`,
+        time: u.created_at,
+      })),
+      ...logins.map((l) => ({
+        text: `${l.name} logged in`,
+        time: l.last_login_at,
+      })),
+      ...aiReplies.map(() => ({
+        text: `AI response generated`,
+        time: new Date(),
+      })),
+      ...emails.map((e) => ({
+        text: `New email received: ${e.subject}`,
+        time: e.received_at,
+      })),
+    ]
+      .filter((a) => a.time)
+      .sort((a, b) => +new Date(b.time!) - +new Date(a.time!))
+      .slice(0, 5);
+  }
+
+  async getBusinessOverview(businessId: number) {
+    if (!businessId) {
+      throw new BadRequestException('Business id missing from token');
+    }
+
+    const [totalUsers, adminCount, aiResponses] = await Promise.all([
+      // 👤 total users of this business
+      this.prisma.user.count({
+        where: { business_id: businessId, role: { name: 'USER' } },
+      }),
+
+      // 👑 admin users of this business
+      this.prisma.user.count({
+        where: {
+          business_id: businessId,
+          role: { name: 'ADMIN' },
+        },
+      }),
+
+      // 🤖 AI responses of this business
+      this.prisma.aiGeneratedReply.count({
+        where: { business_id: businessId },
+      }),
+    ]);
+
+    return {
+      business_id: businessId,
+      totalUsers,
+      adminCount,
+      aiResponses,
+    };
+  }
 }

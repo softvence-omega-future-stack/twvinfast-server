@@ -17,11 +17,28 @@ import { JwtAuthGuard } from 'src/auth/strategies/jwt-auth.guard';
 import { UpdateProfileDto } from './dto/update-self-profile.dto';
 import { RolesGuard } from 'src/auth/strategies/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
+import { PrismaService } from 'prisma/prisma.service';
 
 @Controller('users')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
-
+  constructor(
+    private readonly userService: UserService,
+    private readonly prisma: PrismaService,
+  ) {}
+  @Get('overview')
+  getOverview() {
+    return this.userService.getOverview();
+  }
+  // 🔥 Business based overview (business_id from token)
+  @Get('business-overview')
+  getBusinessOverview(@Req() req: any) {
+    const businessId = req.user.business_id;
+    return this.userService.getBusinessOverview(businessId);
+  }
+  @Get('recent-activities')
+  getRecentActivities() {
+    return this.userService.getRecentActivities();
+  }
   // -----------------------------------------
   // USER: Get My Full Profile (ALL INFO)
   // -----------------------------------------
