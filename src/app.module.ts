@@ -14,6 +14,7 @@ import { RolesGuard } from './auth/strategies/roles.guard';
 import { EmailModule } from './mail/mail.module';
 import { AdminModule } from './admin/admin.module';
 import { SocketModule } from './socket/socket.module';
+import { AiModule } from './admin/ai/ai.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { SocketModule } from './socket/socket.module';
     BillingModule,
     StripeModule,
     AdminModule,
+    AiModule
   ],
   controllers: [AppController],
   providers: [
