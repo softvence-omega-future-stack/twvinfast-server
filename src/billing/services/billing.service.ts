@@ -11,6 +11,7 @@ import { CreateCheckoutDto } from '../dto/create-portal.dto';
 import { CreatePortalDto } from '../dto/create-portal.dto';
 import { CreatePlanDto } from '../dto/create-plan.dto';
 import { UpdatePlanDto } from '../dto/update-plan.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class BillingService {
@@ -165,6 +166,7 @@ export class BillingService {
         price: dto.amount,
         interval: dto.interval,
         email_limit: dto.email_limit ?? null,
+        user_limit: dto.user_limit ?? null,
         ai_credits: dto.ai_credits ?? null,
         features: dto.features ?? undefined,
         is_active: true,
@@ -274,5 +276,361 @@ export class BillingService {
       where: { id: sub.id },
       data: { status: 'CANCELING' },
     });
+  }
+
+  //
+
+  // =========================================================
+  // SUPER ADMIN → Billing Dashboard Data
+  // =========================================================
+  async getSubscriptionDashboard() {
+    const subscriptions = await this.prisma.subscription.findMany({
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        plan: {
+          select: {
+            name: true,
+            price: true,
+            interval: true,
+          },
+        },
+        payments: {
+          orderBy: { created_at: 'desc' },
+          take: 1, // 🔥 latest payment
+          select: {
+            payment_method: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // 🔄 Frontend-ready format
+    return subscriptions.map((sub) => ({
+      company: {
+        name: sub.business.name,
+        email: sub.business.email,
+      },
+      plan: sub.plan.name,
+      status: sub.status,
+      amount: sub.plan.price,
+      billing: sub.plan.interval,
+      nextBilling: sub.renewal_date,
+      paymentMethod: sub.payments[0]?.payment_method ?? '—',
+    }));
+  }
+
+  // =========================================================
+  // SUPER ADMIN → Invoices Dashboard (Summary + List)
+  // =========================================================
+  async getInvoicesDashboard() {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    // -----------------------------------
+    // Fetch all invoices (PaymentHistory)
+    // -----------------------------------
+    const invoices = await this.prisma.paymentHistory.findMany({
+      include: {
+        business: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // -----------------------------------
+    // Summary cards (this month)
+    // -----------------------------------
+    const monthlyInvoices = invoices.filter(
+      (i) => i.created_at >= startOfMonth,
+    );
+
+    const paidInvoices = monthlyInvoices.filter((i) => i.status === 'PAID');
+
+    const pendingInvoices = invoices.filter((i) => i.status === 'PENDING');
+
+    const overdueInvoices = invoices.filter(
+      (i) => i.status === 'OVERDUE' || i.status === 'PAST_DUE',
+    );
+
+    // -----------------------------------
+    // Response mapping (UI ready)
+    // -----------------------------------
+    return {
+      summary: {
+        totalInvoices: monthlyInvoices.length,
+        paidInvoices: {
+          count: paidInvoices.length,
+          amount: paidInvoices.reduce((s, i) => s + i.amount, 0),
+        },
+        pending: pendingInvoices.length,
+        overdue: overdueInvoices.length,
+      },
+
+      invoices: invoices.map((inv) => ({
+        invoiceId: inv.stripe_invoice_id ?? `INV-${inv.id}`,
+        business: inv.business.name,
+        amount: inv.amount,
+        status: inv.status,
+        issueDate: inv.created_at,
+        dueDate: inv.created_at, // Stripe due_date না থাকলে fallback
+        paymentMethod: inv.payment_method ?? '—',
+      })),
+    };
+  }
+
+  // all customer for superAdmin
+  async getCustomerManagementDashboard() {
+    // ------------------------------------
+    // 1️⃣ Fetch all businesses
+    // ------------------------------------
+    const businesses = await this.prisma.business.findMany({
+      include: {
+        users: {
+          where: { role: { name: 'USER' } },
+          select: { id: true },
+        },
+        subscriptions: {
+          orderBy: { created_at: 'desc' },
+          take: 1,
+          include: {
+            plan: true,
+          },
+        },
+        payments: {
+          select: {
+            amount: true,
+          },
+        },
+      },
+    });
+
+    // ✅ ONLY CHANGE: skip first business (Super Admin)
+    const filteredBusinesses = businesses.slice(1);
+
+    // ------------------------------------
+    // 2️⃣ Summary Cards
+    // ------------------------------------
+    const totalCustomers = filteredBusinesses.length;
+
+    const totalUsers = filteredBusinesses.reduce(
+      (sum, b) => sum + b.users.length,
+      0,
+    );
+
+    const trialAccounts = filteredBusinesses.filter(
+      (b) => b.subscriptions[0]?.status === 'TRIALING',
+    ).length;
+
+    const suspendedAccounts = filteredBusinesses.filter(
+      (b) => b.status === 'SUSPENDED',
+    ).length;
+
+    // ------------------------------------
+    // 3️⃣ Table rows
+    // ------------------------------------
+    const customers = filteredBusinesses.map((b) => {
+      const sub = b.subscriptions[0];
+      const totalCost = b.payments.reduce((sum, p) => sum + p.amount, 0);
+
+      return {
+        company: {
+          name: b.name,
+          email: b.email,
+        },
+        plan: sub?.plan?.name ?? '—',
+        status: sub?.status ?? b.status,
+        users: b.users.length,
+        cost: totalCost,
+        credits: sub?.plan?.ai_credits ?? 0,
+        usage: 0,
+      };
+    });
+
+    return {
+      summary: {
+        totalCustomers,
+        totalUsers,
+        trialAccounts,
+        suspendedAccounts,
+      },
+      customers,
+    };
+  }
+
+  // update business status
+  async updateBusinessStatus(
+    businessId: number,
+    status: 'ACTIVE' | 'SUSPENDED',
+  ) {
+    if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
+      throw new BadRequestException('Invalid status value');
+    }
+
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    // 🚫 Optional safety: prevent suspending system business
+    if ((business as any).is_system === true) {
+      throw new BadRequestException('System business cannot be suspended');
+    }
+
+    const updated = await this.prisma.business.update({
+      where: { id: businessId },
+      data: { status },
+    });
+
+    return {
+      message:
+        status === 'SUSPENDED'
+          ? 'Business account suspended successfully'
+          : 'Business account activated successfully',
+      business: {
+        id: updated.id,
+        name: updated.name,
+        status: updated.status,
+      },
+    };
+  }
+  // get all user by super-admin
+
+  // get all user by super-admin
+  async getAllPlatformUsers(filters: {
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    // ----------------------------------
+    // 🔎 WHERE condition (TS + Prisma SAFE)
+    // ----------------------------------
+    const where: Prisma.UserWhereInput = {
+      role: {
+        name: {
+          in: ['USER', 'ADMIN'], // ❌ SUPER_ADMIN বাদ
+        },
+      },
+      status: filters.status ?? undefined,
+
+      ...(filters.search
+        ? {
+            OR: [
+              {
+                name: {
+                  contains: filters.search,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
+              {
+                email: {
+                  contains: filters.search,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
+              {
+                business: {
+                  name: {
+                    contains: filters.search,
+                    mode: Prisma.QueryMode.insensitive,
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    // ----------------------------------
+    // 1️⃣ Paginated users
+    // ----------------------------------
+    const users = await this.prisma.user.findMany({
+      where,
+      include: {
+        role: true,
+        business: {
+          select: { name: true },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      skip,
+      take: limit,
+    });
+
+    // ----------------------------------
+    // 2️⃣ Pagination count
+    // ----------------------------------
+    const totalCount = await this.prisma.user.count({ where });
+
+    // ----------------------------------
+    // 3️⃣ Summary cards (GLOBAL)
+    // ----------------------------------
+    const allUsers = await this.prisma.user.findMany({
+      where: {
+        role: {
+          name: { in: ['USER', 'ADMIN'] },
+        },
+      },
+      include: {
+        role: true,
+      },
+    });
+
+    const totalUsers = allUsers.length;
+    const activeUsers = allUsers.filter((u) => u.status === 'ACTIVE').length;
+    const twoFAEnabled = allUsers.filter((u) => u.twoFAEnabled).length;
+    const adminCount = allUsers.filter((u) => u.role.name === 'ADMIN').length;
+
+    // ----------------------------------
+    // 4️⃣ Table rows
+    // ----------------------------------
+    const table = users.map((u) => ({
+      id: u.id,
+      user: {
+        name: u.name,
+        email: u.email,
+      },
+      company: u.business?.name ?? '—',
+      role: u.role.name,
+      status: u.status ?? 'ACTIVE',
+      twoFA: u.twoFAEnabled ? 'Yes' : 'No',
+      lastLogin: u.updated_at,
+      location: u.location,
+    }));
+
+    return {
+      summary: {
+        totalUsers,
+        activeUsers,
+        twoFAEnabled,
+        admins: adminCount,
+      },
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+      users: table,
+    };
   }
 }

@@ -15,6 +15,8 @@ export class CreatePlanDto {
 
   @IsOptional()
   email_limit?: number;
+  @IsOptional()
+  user_limit?: number;
 
   @IsOptional()
   ai_credits?: number;

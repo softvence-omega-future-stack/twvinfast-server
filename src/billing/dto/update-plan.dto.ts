@@ -23,6 +23,10 @@ export class UpdatePlanDto {
 
   @IsOptional()
   @IsNumber()
+  user_limit?: number;
+
+  @IsOptional()
+  @IsNumber()
   @Min(0)
   ai_credits?: number;
 

@@ -340,8 +340,10 @@ model Plan {
   name              String
   price             Float
   email_limit       Int?
-  ai_credits        Int?
+  user_limit        Int?    // null = unlimited
   features          Json?
+  ai_credits        Int?     // ✅ ADD THIS
+
   is_active         Boolean          @default(true)
   stripe_price_id   String?
   currency          String           @default("usd")

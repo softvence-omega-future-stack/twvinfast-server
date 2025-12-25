@@ -7,8 +7,10 @@ import {
   Get,
   Headers,
   Param,
+  Patch,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -168,5 +170,54 @@ export class BillingController {
   @Get('subscriptions/active-trial')
   async getAllActiveAndTrialSubs() {
     return this.billingService.getAllActiveAndTrialSubscriptions();
+  }
+
+  // SUPER ADMIN → Billing & Subscription Table (Dashboard)
+  // -------------------------------------------------------------------------
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('subscriptions/dashboard')
+  async getSubscriptionDashboard(@Req() req) {
+    return this.billingService.getSubscriptionDashboard();
+  }
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('invoices/dashboard')
+  async getInvoicesDashboard() {
+    return this.billingService.getInvoicesDashboard();
+  }
+  //all customer for superAdmin
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('admin/customers/dashboard')
+  getCustomerDashboard() {
+    return this.billingService.getCustomerManagementDashboard();
+  }
+
+  // 🔒 Suspend / Activate Business
+  @Patch(':businessId/status')
+  updateBusinessStatus(
+    @Param('businessId') businessId: number,
+    @Body('status') status: 'ACTIVE' | 'SUSPENDED',
+  ) {
+    return this.billingService.updateBusinessStatus(Number(businessId), status);
+  }
+
+  //Get all user by super-admin
+  // Get all users by super-admin
+
+  @Get()
+  getAllUsers(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.billingService.getAllPlatformUsers({
+      status,
+      search,
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 10,
+    });
   }
 }
