@@ -206,7 +206,7 @@ export class AuthService {
       data: {
         business_id: admin.business_id,
         user_id: user.id,
-        provider: 'SMTP',
+        provider: 'NONE',
         email_address: dto.email,
         is_ssl: true,
       },

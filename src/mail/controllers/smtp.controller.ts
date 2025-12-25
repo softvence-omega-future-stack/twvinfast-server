@@ -34,6 +34,10 @@ export class SmtpController {
     @UploadedFiles() files: Express.Multer.File[],
   ) {
     const payload = JSON.parse(data);
-    return this.smtpService.saveDraft({ ...payload, files });
+
+    return this.smtpService.saveDraft({
+      ...payload,
+      files,
+    });
   }
 }

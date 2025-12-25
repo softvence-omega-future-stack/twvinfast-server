@@ -470,7 +470,7 @@ async function main() {
       provider: 'SMTP',
       email_address: env('SMTP_USER', 'admin@replii.ca')!,
       smtp_host: env('SMTP_HOST', 'mail.webador.com'),
-      smtp_password: env('SMTP_PASS'),
+      smtp_password: env('SMTP_PASS', '123456Admin@24'),
       smtp_port: Number(env('SMTP_PORT', '587')),
       imap_host: env('IMAP_HOST') || null,
       imap_port: env('IMAP_PORT') ? Number(env('IMAP_PORT')) : null,
