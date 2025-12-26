@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { PrismaService } from 'prisma/prisma.service';
 import { StripeService } from 'src/stripe/stripe.service';
 import { MailService } from 'src/mail/services/mail.service';
+import { Subscription } from '@prisma/client';
 
 @Injectable()
 export class BillingWebhookService {
@@ -109,87 +110,40 @@ export class BillingWebhookService {
   }
 
   // ---------------------------------------------
-  // 🔒 CRITICAL FIX: DO NOT ACTIVATE DURING TRIAL
-  // ---------------------------------------------
-  // private async invoicePaid(event: any) {
-  //   const invoice = event.data.object;
-
-  //   // 🔒 HARD STOP — already recorded
-  //   const alreadyExists = await this.prisma.paymentHistory.findUnique({
-  //     where: { stripe_invoice_id: invoice.id },
-  //   });
-
-  //   if (alreadyExists) {
-  //     this.logger.warn(`⚠️ Duplicate payment ignored (invoice=${invoice.id})`);
-  //     return;
-  //   }
-
-  //   const sub = await this.prisma.subscription.findFirst({
-  //     where: { stripe_subscription_id: invoice.subscription },
-  //   });
-
-  //   if (!sub) return;
-
-  //   await this.prisma.paymentHistory.create({
-  //     data: {
-  //       business_id: sub.business_id,
-  //       plan_id: sub.plan_id,
-  //       subscription_id: sub.id,
-  //       amount: (invoice.amount_paid ?? 0) / 100,
-  //       currency: invoice.currency ?? 'usd',
-  //       payment_method: 'card',
-  //       status: 'PAID',
-  //       stripe_invoice_id: invoice.id,
-  //       invoice_url: invoice.hosted_invoice_url ?? null,
-  //     },
-  //   });
-
-  //   // ❗ Trial হলে status change করবেন না
-  //   if (sub.status === 'TRIALING') {
-  //     this.logger.log('🟡 Trial invoice → payment recorded only');
-  //     return;
-  //   }
-  // }
-  // 🔒 INVOICE PAID (FIXED PLAN RESOLUTION)
-  // ---------------------------------------------
-  // ---------------------------------------------
-  // 🔒 INVOICE PAID (RACE-CONDITION SAFE FIX)
-  // ---------------------------------------------
   private async invoicePaid(event: any) {
     const invoice = event.data.object;
 
+    // 🔒 One invoice = one row (retry safe)
     const alreadyExists = await this.prisma.paymentHistory.findUnique({
       where: { stripe_invoice_id: invoice.id },
     });
 
     if (alreadyExists) {
-      this.logger.warn(`⚠️ Duplicate payment ignored (${invoice.id})`);
+      this.logger.warn(`⚠️ Duplicate invoice ignored (${invoice.id})`);
       return;
     }
 
-    // ✅ FIX: Explicit type so TS knows this is NOT just null
-    let sub: Awaited<
-      ReturnType<typeof this.prisma.subscription.findFirst>
-    > | null = null;
-
+    // 🔁 Find subscription (race-safe)
+    let sub: Subscription | null = null;
     for (let i = 0; i < 5; i++) {
       sub = await this.prisma.subscription.findFirst({
         where: { stripe_subscription_id: invoice.subscription },
       });
-
       if (sub) break;
-
-      await new Promise((res) => setTimeout(res, 500));
+      await new Promise((r) => setTimeout(r, 500));
     }
 
     if (!sub) {
-      this.logger.warn(
-        `⏳ Subscription not ready yet for invoice ${invoice.id}, skipping`,
-      );
+      this.logger.warn(`⏳ Subscription not ready (${invoice.id})`);
       return;
     }
 
-    const priceId = invoice.lines?.data?.[0]?.price?.id;
+    // 💳 Resolve plan safely
+    const line = invoice.lines?.data?.find(
+      (l) => l.type === 'subscription' && l.price?.id,
+    );
+
+    const priceId = line?.price?.id;
 
     const planFromInvoice = priceId
       ? await this.prisma.plan.findFirst({
@@ -197,25 +151,32 @@ export class BillingWebhookService {
         })
       : null;
 
+    // ✅ FINAL TRUTH: PAID vs FREE
+    const amount = Number(invoice.amount_paid ?? 0) / 100;
+    const status = amount > 0 ? 'PAID' : 'FREE';
+
     await this.prisma.paymentHistory.create({
       data: {
         business_id: sub.business_id,
         plan_id: planFromInvoice?.id ?? sub.plan_id,
         subscription_id: sub.id,
-        amount: (invoice.amount_paid ?? 0) / 100,
+
+        amount,
         currency: invoice.currency ?? 'usd',
-        payment_method: 'card',
-        status: 'PAID',
+        payment_method:
+          invoice.payment_settings?.payment_method_types?.[0] ?? 'unknown',
+
+        status, // 🔥 THIS IS THE FIX
+
         stripe_invoice_id: invoice.id,
-        stripe_payment_intent_id: invoice.payment_intent as string,
+        stripe_payment_intent_id: (invoice.payment_intent as string) ?? null,
         invoice_url: invoice.hosted_invoice_url ?? null,
       },
     });
 
-    if (sub.status === 'TRIALING') {
-      this.logger.log('🟡 Trial invoice → payment recorded only');
-      return;
-    }
+    this.logger.log(
+      `✅ Invoice saved | invoice=${invoice.id} | amount=${amount} | status=${status}`,
+    );
   }
 
   private async getSuperAdminMailbox() {
@@ -243,9 +204,7 @@ export class BillingWebhookService {
 
     return mailbox;
   }
-
-  // ---------------------------------------------
-  // PAYMENT FAILED → SEND EMAIL (SUPER ADMIN SMTP)
+  // PAYMENT FAILED → SEND EMAIL (SUPER ADMIN SMTP)gg
   // ---------------------------------------------
   private async invoiceFailed(event: any) {
     const invoice = event.data.object;

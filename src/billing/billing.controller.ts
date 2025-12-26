@@ -165,21 +165,48 @@ export class BillingController {
   // -------------------------------------------------------------------------
   // SUPER ADMIN → Get All Trial + Active Subscriptions
   // -------------------------------------------------------------------------
+  // @UseGuards(AuthGuard('jwt'), RolesGuard)
+  // @Roles('SUPER_ADMIN')
+  // @Get('subscriptions/active-trial')
+  // async getAllActiveAndTrialSubs() {
+  //   return this.billingService.getAllActiveAndTrialSubscriptions();
+  // }
+
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('SUPER_ADMIN')
   @Get('subscriptions/active-trial')
-  async getAllActiveAndTrialSubs() {
-    return this.billingService.getAllActiveAndTrialSubscriptions();
+  async getAllActiveAndTrialSubs(
+    @Query('search') search?: string,
+    @Query('status') status?: 'ACTIVE' | 'TRIALING' | 'SUSPENDED',
+  ) {
+    return this.billingService.getAllActiveAndTrialSubscriptions({
+      search,
+      status,
+    });
   }
 
   // SUPER ADMIN → Billing & Subscription Table (Dashboard)
   // -------------------------------------------------------------------------
+  // @UseGuards(AuthGuard('jwt'), RolesGuard)
+  // @Roles('SUPER_ADMIN')
+  // @Get('subscriptions/dashboard')
+  // async getSubscriptionDashboard(@Req() req) {
+  //   return this.billingService.getSubscriptionDashboard();
+  // }
+
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('SUPER_ADMIN')
   @Get('subscriptions/dashboard')
-  async getSubscriptionDashboard(@Req() req) {
-    return this.billingService.getSubscriptionDashboard();
+  async getSubscriptionDashboard(
+    @Query('search') search?: string,
+    @Query('status') status?: 'ACTIVE' | 'TRIALING' | 'SUSPENDED',
+  ) {
+    return this.billingService.getSubscriptionDashboard({
+      search,
+      status,
+    });
   }
+
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('SUPER_ADMIN')
   @Get('invoices/dashboard')
@@ -190,8 +217,18 @@ export class BillingController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('SUPER_ADMIN')
   @Get('admin/customers/dashboard')
-  getCustomerDashboard() {
-    return this.billingService.getCustomerManagementDashboard();
+  getCustomerDashboard(
+    @Query('search') search?: string,
+    @Query('status') status?: 'ACTIVE' | 'TRIALING' | 'SUSPENDED',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.billingService.getCustomerManagementDashboard({
+      search,
+      status,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   // 🔒 Suspend / Activate Business
@@ -219,5 +256,28 @@ export class BillingController {
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 10,
     });
+  }
+
+  //getRevenueOverview
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('subscriptions/revenue-overview')
+  getRevenueOverview() {
+    return this.billingService.getRevenueOverview();
+  }
+
+  // SUPER ADMIN → Analytics & Reports → Growth Analysis
+  // -------------------------------------------------------------------------
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('analytics/growth-analysis')
+  getGrowthAnalysis() {
+    return this.billingService.getGrowthAnalysis();
+  }
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('analytics/global-overview')
+  getGlobalOverview() {
+    return this.billingService.getGlobalOverview();
   }
 }
