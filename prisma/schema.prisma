@@ -39,8 +39,6 @@ model User {
   notificationSetting NotificationSetting?
   business            Business?               @relation(fields: [business_id], references: [id])
   role                Role                    @relation(fields: [role_id], references: [id])
-  aiTrainingDocuments AiTrainingDocument[]
-
 }
 
 model NotificationSetting {
@@ -330,7 +328,8 @@ model Business {
   users              User[]
 
   // 
-   aiDocuments AiTrainingDocument[]
+aiDocuments AiDocumentRegistry[]
+
 }
 
 model Plan {
@@ -392,30 +391,45 @@ model PaymentHistory {
   @@index([business_id])
   @@index([plan_id])
 }
+model AiDocumentRegistry {
+  id                Int      @id @default(autoincrement())
+  business_id       Int
+  organization_name String
 
+  file_name         String
+  created_at        DateTime @default(now())
 
-
-model AiTrainingDocument {
-  id             Int      @id @default(autoincrement())
-  business_id    Int
-  uploaded_by    Int
-  original_name  String
-  file_path      String
-  file_type      String
-  file_size      Int?
-  category       String?
-  tags           Json?
-  status         String   @default("ACTIVE") // ACTIVE | DELETED
-
-  created_at     DateTime @default(now())
-  deleted_at     DateTime?
-
-  business       Business @relation(fields: [business_id], references: [id])
-  uploader       User     @relation(fields: [uploaded_by], references: [id])
+  business          Business @relation(fields: [business_id], references: [id])
 
   @@index([business_id])
-  @@index([uploaded_by])
 }
+
+
+
+
+
+
+// model AiTrainingDocument {
+//   id             Int      @id @default(autoincrement())
+//   business_id    Int
+//   uploaded_by    Int
+//   original_name  String
+//   file_path      String
+//   file_type      String
+//   file_size      Int?
+//   category       String?
+//   tags           Json?
+//   status         String   @default("ACTIVE") // ACTIVE | DELETED
+
+//   created_at     DateTime @default(now())
+//   deleted_at     DateTime?
+
+//   business       Business @relation(fields: [business_id], references: [id])
+//   uploader       User     @relation(fields: [uploaded_by], references: [id])
+
+//   @@index([business_id])
+//   @@index([uploaded_by])
+// }
 
 
 enum EmailFolder {

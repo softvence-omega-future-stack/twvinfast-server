@@ -3,36 +3,39 @@ import {
   Post,
   Get,
   Delete,
+  Body,
   Param,
-  UploadedFile,
-  UseInterceptors,
   Req,
   ParseIntPipe,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { AiService } from './ai.service';
-import { UploadAiDocDto } from './dto/upload-ai-doc.dto';
 
 @Controller('admin/ai')
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
-  // 📤 Upload
+  /* ===============================
+     1️⃣ Upload / Create AI metadata
+  =============================== */
   @Post('documents')
-  @UseInterceptors(FileInterceptor('file'))
-  uploadDocument(@UploadedFile() file: Express.Multer.File, @Req() req) {
-    return this.aiService.uploadDocument(file, req.user);
+  upload(@Body() body: any, @Req() req) {
+    return this.aiService.createDocument(body, req.user);
   }
 
-  // 📄 List
+  /* ===============================
+     2️⃣ Get all AI documents
+  =============================== */
   @Get('documents')
-  listDocuments(@Req() req) {
-    return this.aiService.listDocuments(req.user.business_id);
+  getAll(@Req() req) {
+    return this.aiService.getDocuments(req.user.business_id);
   }
 
-  // 🗑 Delete
-  @Delete('documents/:id')
-  deleteDocument(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    return this.aiService.deleteDocument(id, req.user);
+  /* ===============================
+     3️⃣ Delete AI document
+  =============================== */
+  // 3️⃣ DELETE (organization_name + file_name from BODY)
+  @Delete('documents')
+  delete(@Body() body: any, @Req() req) {
+    return this.aiService.deleteByOrgAndFile(body, req.user);
   }
 }

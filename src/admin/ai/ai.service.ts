@@ -1,67 +1,85 @@
 import {
   Injectable,
-  ForbiddenException,
+  BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
-import * as fs from 'fs';
 
 @Injectable()
 export class AiService {
   constructor(private prisma: PrismaService) {}
 
-  async uploadDocument(file: Express.Multer.File, user: any) {
-    if (!file) throw new Error('File required');
+  /* ===============================
+     1️⃣ CREATE (Upload metadata)
+  =============================== */
+  async createDocument(data: any, user: any) {
+    const { organization_name, file_name } = data;
 
-    const doc = await this.prisma.aiTrainingDocument.create({
+    if (!organization_name || !file_name) {
+      throw new BadRequestException(
+        'organization_name and file_name are required',
+      );
+    }
+
+    return this.prisma.aiDocumentRegistry.create({
       data: {
         business_id: user.business_id,
-        uploaded_by: user.id,
-        original_name: file.originalname,
-        file_path: file.path,
-        file_type: file.mimetype,
-        file_size: file.size,
+        organization_name,
+        file_name,
       },
     });
-
-    // 🔔 Optional: notify AI service here
-    // emit / webhook / queue
-
-    return { success: true, document: doc };
   }
 
-  async listDocuments(businessId: number) {
-    return this.prisma.aiTrainingDocument.findMany({
-      where: {
-        business_id: businessId,
-        status: 'ACTIVE',
-      },
+  /* ===============================
+     2️⃣ GET ALL
+  =============================== */
+  async getDocuments(businessId: number) {
+    return this.prisma.aiDocumentRegistry.findMany({
+      where: { business_id: businessId },
       orderBy: { created_at: 'desc' },
     });
   }
 
-  async deleteDocument(id: number, user: any) {
-    const doc = await this.prisma.aiTrainingDocument.findUnique({
-      where: { id },
-    });
+  /* ===============================
+     3️⃣ DELETE
+  =============================== */
+  /* 3️⃣ DELETE (organization_name + file_name) */
+  async deleteByOrgAndFile(data: any, user: any) {
+    const { organization_name, file_name } = data;
 
-    if (!doc) throw new NotFoundException('Document not found');
-    if (doc.business_id !== user.business_id) throw new ForbiddenException();
-
-    // 🗑 delete file
-    if (fs.existsSync(doc.file_path)) {
-      fs.unlinkSync(doc.file_path);
+    if (!organization_name || !file_name) {
+      throw new BadRequestException(
+        'organization_name and file_name are required',
+      );
     }
 
-    await this.prisma.aiTrainingDocument.update({
-      where: { id },
-      data: {
-        status: 'DELETED',
-        deleted_at: new Date(),
+    const doc = await this.prisma.aiDocumentRegistry.findFirst({
+      where: {
+        business_id: user.business_id,
+        organization_name,
+        file_name,
       },
     });
 
-    // 🔔 notify AI service (cleanup embeddings)
-    return { success: true };
+    if (!doc) {
+      throw new NotFoundException('AI document not found');
+    }
+
+    if (doc.business_id !== user.business_id) {
+      throw new ForbiddenException(
+        'You are not allowed to delete this document',
+      );
+    }
+
+    await this.prisma.aiDocumentRegistry.delete({
+      where: { id: doc.id },
+    });
+
+    return {
+      success: true,
+      organization_name,
+      file_name,
+    };
   }
 }
