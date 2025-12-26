@@ -110,40 +110,61 @@ export class BillingWebhookService {
   }
 
   // ---------------------------------------------
+  // ---------------------------------------------
+  // ---------------------------------------------
   private async invoicePaid(event: any) {
-    const invoice = event.data.object;
+    const rawInvoice = event.data.object;
 
-    // 🔒 One invoice = one row (retry safe)
+    if (!rawInvoice?.id) {
+      this.logger.warn(`⚠️ invoice id missing`);
+      return;
+    }
+
+    // 🔧 Stripe returns Response<Invoice>, unwrap safely
+    const invoice = (await this.stripeService.client.invoices.retrieve(
+      rawInvoice.id,
+      {
+        expand: ['lines.data', 'payment_intent'],
+      },
+    )) as any; // 🔥 CAST TO ANY (Stripe typing issue)
+
+    // -------- subscription id resolve --------
+    const stripeSubscriptionId =
+      typeof invoice.subscription === 'string'
+        ? invoice.subscription
+        : invoice.subscription?.id;
+
+    if (!stripeSubscriptionId) {
+      throw new Error('Subscription id missing on invoice');
+    }
+
+    // -------- idempotency check --------
     const alreadyExists = await this.prisma.paymentHistory.findUnique({
       where: { stripe_invoice_id: invoice.id },
     });
 
-    if (alreadyExists) {
-      this.logger.warn(`⚠️ Duplicate invoice ignored (${invoice.id})`);
-      return;
-    }
+    if (alreadyExists) return;
 
-    // 🔁 Find subscription (race-safe)
+    // -------- find subscription (retry-safe) --------
     let sub: Subscription | null = null;
     for (let i = 0; i < 5; i++) {
       sub = await this.prisma.subscription.findFirst({
-        where: { stripe_subscription_id: invoice.subscription },
+        where: { stripe_subscription_id: stripeSubscriptionId },
       });
       if (sub) break;
       await new Promise((r) => setTimeout(r, 500));
     }
 
     if (!sub) {
-      this.logger.warn(`⏳ Subscription not ready (${invoice.id})`);
-      return;
+      throw new Error('Subscription not ready');
     }
 
-    // 💳 Resolve plan safely
+    // -------- resolve price id (CAST line to any) --------
     const line = invoice.lines?.data?.find(
-      (l) => l.type === 'subscription' && l.price?.id,
+      (l: any) => l.price?.id || l.plan?.id, // 🔥 CAST TO ANY
     );
 
-    const priceId = line?.price?.id;
+    const priceId = line?.price?.id ?? line?.plan?.id ?? null;
 
     const planFromInvoice = priceId
       ? await this.prisma.plan.findFirst({
@@ -151,31 +172,48 @@ export class BillingWebhookService {
         })
       : null;
 
-    // ✅ FINAL TRUTH: PAID vs FREE
+    // -------- amount & status --------
     const amount = Number(invoice.amount_paid ?? 0) / 100;
     const status = amount > 0 ? 'PAID' : 'FREE';
 
-    await this.prisma.paymentHistory.create({
-      data: {
+    // -------- payment intent id (CAST invoice to any) --------
+    const paymentIntentId =
+      typeof invoice.payment_intent === 'string'
+        ? invoice.payment_intent
+        : (invoice.payment_intent?.id ?? null);
+
+    // -------- upsert payment history --------
+    await this.prisma.paymentHistory.upsert({
+      where: { stripe_invoice_id: invoice.id },
+      update: {
         business_id: sub.business_id,
         plan_id: planFromInvoice?.id ?? sub.plan_id,
         subscription_id: sub.id,
-
         amount,
         currency: invoice.currency ?? 'usd',
         payment_method:
           invoice.payment_settings?.payment_method_types?.[0] ?? 'unknown',
-
-        status, // 🔥 THIS IS THE FIX
-
+        status,
+        stripe_payment_intent_id: paymentIntentId,
+        invoice_url: invoice.hosted_invoice_url ?? null,
+      },
+      create: {
+        business_id: sub.business_id,
+        plan_id: planFromInvoice?.id ?? sub.plan_id,
+        subscription_id: sub.id,
+        amount,
+        currency: invoice.currency ?? 'usd',
+        payment_method:
+          invoice.payment_settings?.payment_method_types?.[0] ?? 'unknown',
+        status,
         stripe_invoice_id: invoice.id,
-        stripe_payment_intent_id: (invoice.payment_intent as string) ?? null,
+        stripe_payment_intent_id: paymentIntentId,
         invoice_url: invoice.hosted_invoice_url ?? null,
       },
     });
 
     this.logger.log(
-      `✅ Invoice saved | invoice=${invoice.id} | amount=${amount} | status=${status}`,
+      `✅ PaymentHistory saved | invoice=${invoice.id} | amount=${amount}`,
     );
   }
 
