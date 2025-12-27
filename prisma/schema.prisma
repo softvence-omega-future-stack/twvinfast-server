@@ -39,6 +39,7 @@ model User {
   notificationSetting NotificationSetting?
   business            Business?               @relation(fields: [business_id], references: [id])
   role                Role                    @relation(fields: [role_id], references: [id])
+  aiCreditLogs        AiCreditLog[]
 }
 
 model NotificationSetting {
@@ -200,6 +201,25 @@ model Customer {
   @@index([email])
 }
 
+
+
+model AiCreditLog {
+  id          Int      @id @default(autoincrement())
+  business_id Int
+  user_id     Int?
+  route       String
+  model       String
+  tokens      Int
+  action      AIActionType?
+  created_at  DateTime @default(now())
+
+  business Business @relation(fields: [business_id], references: [id])
+  user     User?    @relation(fields: [user_id], references: [id])
+
+  @@index([business_id])
+  @@index([user_id])
+}
+
 model Opportunity {
   id           Int              @id @default(autoincrement())
   business_id  Int
@@ -326,9 +346,12 @@ model Business {
   payments           PaymentHistory[]
   subscriptions      Subscription[]
   users              User[]
+  aiCreditLogs       AiCreditLog[]
+  // 🔥 AI CREDITS (NEW)
+  ai_credits_total   Int   @default(0)
+  ai_credits_used    Int   @default(0)
 
-  // 
-aiDocuments AiDocumentRegistry[]
+  aiDocuments        AiDocumentRegistry[]
 
 }
 
@@ -409,27 +432,6 @@ model AiDocumentRegistry {
 
 
 
-// model AiTrainingDocument {
-//   id             Int      @id @default(autoincrement())
-//   business_id    Int
-//   uploaded_by    Int
-//   original_name  String
-//   file_path      String
-//   file_type      String
-//   file_size      Int?
-//   category       String?
-//   tags           Json?
-//   status         String   @default("ACTIVE") // ACTIVE | DELETED
-
-//   created_at     DateTime @default(now())
-//   deleted_at     DateTime?
-
-//   business       Business @relation(fields: [business_id], references: [id])
-//   uploader       User     @relation(fields: [uploaded_by], references: [id])
-
-//   @@index([business_id])
-//   @@index([uploaded_by])
-// }
 
 
 enum EmailFolder {
