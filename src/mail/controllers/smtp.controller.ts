@@ -40,4 +40,19 @@ export class SmtpController {
       files,
     });
   }
+
+  //
+  /* ============ AI GENERATE EMAIL ============ */
+  @Post('generate')
+  async generateEmail(
+    @Body('prompt') prompt: string,
+    @Body('organization_name') organizationName: string,
+    @Body('tone') tone?: string,
+  ) {
+    return this.smtpService.generateEmail({
+      prompt,
+      organization_name: organizationName,
+      tone,
+    });
+  }
 }

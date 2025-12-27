@@ -325,6 +325,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { createSmtpTransporterFromDb } from 'src/config/smtp.config';
 import getNameFromEmail from 'src/config/getNameFromEmail';
 import { SocketService } from 'src/socket/socket.service';
+import axios from 'axios';
 
 @Injectable()
 export class SmtpService implements OnModuleDestroy {
@@ -640,6 +641,59 @@ ${original.body_text ?? ''}`;
       try {
         transporter.close?.();
       } catch {}
+    }
+  }
+  // AI mail generate
+  async generateEmail(payload: {
+    prompt: string;
+    organization_name: string;
+    tone?: string;
+  }) {
+    try {
+      if (!payload.prompt || !payload.organization_name) {
+        throw new Error('Prompt or organization name missing');
+      }
+
+      /* ================= PREPARE PROMPT ================= */
+      const finalPrompt = payload.tone
+        ? `${payload.prompt}\n\nTone: ${payload.tone}`
+        : payload.prompt;
+
+      /* ================= AI TEAM API CALL ================= */
+      const response = await axios.post(
+        'https://twinfast-emailassistant-ai.onrender.com/api/v1/emails/generate',
+        new URLSearchParams({
+          body: finalPrompt,
+          organization_name: payload.organization_name,
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          timeout: 20000,
+        },
+      );
+
+      /* ================= VALIDATE RESPONSE ================= */
+      const data = response.data;
+      console.log(data);
+
+      if (!data?.subject || !data?.email_body) {
+        throw new Error('Invalid AI response');
+      }
+
+      /* ================= RETURN UI FRIENDLY ================= */
+      return {
+        success: true,
+        subject: data.subject,
+        text: data.email_body,
+        usage: data.token_usage ?? null,
+      };
+    } catch (err: any) {
+      this.logger.error('AI generate failed', err.message);
+      throw new InternalServerErrorException(
+        err?.message || 'AI email generation failed',
+      );
     }
   }
 }

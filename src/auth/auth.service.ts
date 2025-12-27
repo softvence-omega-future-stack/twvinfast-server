@@ -21,28 +21,50 @@ export class AuthService {
     private jwt: JwtService,
   ) {}
 
-  async sendLoginAlertEmail(user: { email: string; name: string }) {
-    const transporter = await createSuperAdminSmtpTransporter();
-    const mailbox = await this.prisma.mailbox.findUnique({
-      where: { id: 1 }, // SuperAdmin mailbox
-    });
-    await transporter.sendMail({
-      from: `"Security Alert" <${mailbox!.email_address}>`,
-      to: user.email,
-      subject: 'New Login Detected',
-      html: `
-      <p>Hi ${user.name},</p>
-      <p>We noticed a new login to your account.</p>
-      <p>If this was not you, please reset your password immediately.</p>
-      <br/>
-      <p>— Security Team</p>
-    `,
-    });
-  }
+  // async sendLoginAlertEmail(user: { email: string; name: string }) {
+  //   try {
+  //     // 🔍 Fetch SuperAdmin mailbox
+  //     const mailbox = await this.prisma.mailbox.findUnique({
+  //       where: { id: 1 }, // SuperAdmin mailbox
+  //     });
 
-  // ======================================================
-  // 🔐 TOKEN GENERATOR (EXTENDED FOR 2FA — OLD BEHAVIOR SAFE)
-  // ======================================================
+  //     // 🛑 Mailbox missing or incomplete → skip safely
+  //     if (!mailbox || !mailbox.email_address) {
+  //       console.warn('⚠️ Login alert skipped: mailbox not configured');
+  //       return;
+  //     }
+
+  //     const transporter = await createSuperAdminSmtpTransporter();
+
+  //     // 🔐 SMTP credential validation (MOST IMPORTANT PART)
+  //     try {
+  //       await transporter.verify();
+  //     } catch (err) {
+  //       console.warn(
+  //         '⚠️ Login alert skipped: SMTP credential invalid or unreachable',
+  //       );
+  //       return; // ❌ DO NOT THROW
+  //     }
+
+  //     // ✅ Only send mail if SMTP is verified
+  //     await transporter.sendMail({
+  //       from: `"Security Alert" <${mailbox.email_address}>`,
+  //       to: user.email,
+  //       subject: 'New Login Detected',
+  //       html: `
+  //       <p>Hi ${user.name},</p>
+  //       <p>We noticed a new login to your account.</p>
+  //       <p>If this was not you, please reset your password immediately.</p>
+  //       <br/>
+  //       <p>— Security Team</p>
+  //     `,
+  //     });
+  //   } catch (err) {
+  //     // 🚫 ABSOLUTELY NEVER break login
+  //     console.warn('⚠️ Login alert email failed safely');
+  //   }
+  // }
+
   async generateTokens(
     user: any,
     options?: { twoFARequired?: boolean; twoFAVerified?: boolean },
@@ -292,16 +314,16 @@ export class AuthService {
     /* ======================================================
    🔐 LOGIN ALERT TRIGGER
 ====================================================== */
-    const notification = await this.prisma.notificationSetting.findUnique({
-      where: { user_id: user.id },
-    });
+    // const notification = await this.prisma.notificationSetting.findUnique({
+    //   where: { user_id: user.id },
+    // });
 
-    if (notification?.login_alert_enabled) {
-      await this.sendLoginAlertEmail({
-        email: user.email,
-        name: user.name,
-      });
-    }
+    // if (notification?.login_alert_enabled) {
+    //   await this.sendLoginAlertEmail({
+    //     email: user.email,
+    //     name: user.name,
+    //   });
+    // }
 
     return {
       message: 'Login successful',
