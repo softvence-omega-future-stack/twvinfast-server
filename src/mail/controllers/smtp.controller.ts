@@ -8,6 +8,7 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { SmtpService } from '../services/smtp.service';
 import { mailMulterConfig } from 'src/config/multer.config';
+import { GenerateReplyDto } from '../dto/generate-reply.dto';
 
 @Controller('mail/smtp')
 export class SmtpController {
@@ -54,5 +55,11 @@ export class SmtpController {
       organization_name: organizationName,
       tone,
     });
+  }
+
+  //replay mail
+  @Post('reply')
+  generateReply(@Body() dto: GenerateReplyDto) {
+    return this.smtpService.generateReply(dto);
   }
 }

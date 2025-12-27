@@ -670,13 +670,12 @@ ${original.body_text ?? ''}`;
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
-          timeout: 20000,
+          timeout: 30000,
         },
       );
 
       /* ================= VALIDATE RESPONSE ================= */
       const data = response.data;
-      console.log(data);
 
       if (!data?.subject || !data?.email_body) {
         throw new Error('Invalid AI response');
@@ -694,6 +693,29 @@ ${original.body_text ?? ''}`;
       throw new InternalServerErrorException(
         err?.message || 'AI email generation failed',
       );
+    }
+  }
+
+  // ai replay route
+  async generateReply(payload: {
+    incoming_email: string;
+    organization_name: string;
+  }) {
+    try {
+      const res = await axios.post(
+        'https://twinfast-emailassistant-ai.onrender.com/reply',
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      return res.data;
+    } catch (error) {
+      console.error('AI Reply API failed:', error?.response?.data || error);
+      throw new InternalServerErrorException('Failed to generate AI reply');
     }
   }
 }
