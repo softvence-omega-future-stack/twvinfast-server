@@ -41,8 +41,8 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build docker image
-        run: docker compsoe --profile prod build --no-cache
+      - name: Docker buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Push docker image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:latest
