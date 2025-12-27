@@ -24,11 +24,10 @@ jobs:
 
       - name: Just build test
         run: npm run build
-  build-and-push:
+    build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -48,13 +47,13 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:latest
-
+          tags: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:${{ github.sha }}
+          build-args: |
+            CACHE=0 # Ensure no cache is used in building the image
   deploy:
     name: Deploy to VPS
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -78,16 +77,15 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           password: ${{ secrets.VPS_SSH_KEY }}
           source: 'docker-compose.yaml'
-          target: '/home/${{ secrets.VPS_USERNAME }}/projects/${{secrets.PACKAGE_NAME}}'
-
-      - name: Copy Caddy File
+          target: '/home/${{ secrets.VPS_USERNAME }}/projects/${{ secrets.PACKAGE_NAME }}'
+      - name: Copy Compose File
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           password: ${{ secrets.VPS_SSH_KEY }}
           source: 'Caddyfile'
-          target: '/home/${{ secrets.VPS_USERNAME }}/projects/${{secrets.PACKAGE_NAME}}'
+          target: '/home/${{ secrets.VPS_USERNAME }}/projects/${{ secrets.PACKAGE_NAME }}'
 
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -97,14 +95,9 @@ jobs:
           password: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd /home/${{ secrets.VPS_USERNAME }}/projects/${{ secrets.PACKAGE_NAME }}
-            # Force pull latest images
-            docker compose --profile prod pull
-
+            docker compose --profile prod pull --ignore-pull-failures
             docker compose --profile prod down
-
             docker image prune -af
-
-            # Recreate containers with new images
             docker compose --profile prod up -d --force-recreate
 
   deploy-check:
