@@ -4,6 +4,7 @@ import {
   Body,
   UploadedFiles,
   UseInterceptors,
+  Req,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { SmtpService } from '../services/smtp.service';
@@ -44,8 +45,23 @@ export class SmtpController {
 
   //
   /* ============ AI GENERATE EMAIL ============ */
+  // @Post('generate')
+  // async generateEmail(
+  //   @Body('prompt') prompt: string,
+  //   @Body('organization_name') organizationName: string,
+  //   @Body('tone') tone?: string,
+  // ) {
+  //   return this.smtpService.generateEmail({
+  //     prompt,
+  //     organization_name: organizationName,
+  //     tone,
+  //   });
+  // }
+
+  /* ============ AI GENERATE EMAIL ============ */
   @Post('generate')
   async generateEmail(
+    @Req() req: any, // 🔥 NEW: auth context
     @Body('prompt') prompt: string,
     @Body('organization_name') organizationName: string,
     @Body('tone') tone?: string,
@@ -54,12 +70,27 @@ export class SmtpController {
       prompt,
       organization_name: organizationName,
       tone,
+
+      // 🔥 NEW: AI credits tracking এর জন্য
+      business_id: req.user.business_id,
+      user_id: req.user.id,
     });
   }
 
   //replay mail
+  // @Post('reply')
+  // generateReply(@Body() dto: GenerateReplyDto) {
+  //   return this.smtpService.generateReply(dto);
+  // }
+  // replay mail
   @Post('reply')
-  generateReply(@Body() dto: GenerateReplyDto) {
-    return this.smtpService.generateReply(dto);
+  generateReply(@Req() req: any, @Body() dto: GenerateReplyDto) {
+    return this.smtpService.generateReply({
+      ...dto,
+
+      // 🔥 NEW: AI credits tracking এর জন্য
+      business_id: req.user.business_id,
+      user_id: req.user.id,
+    });
   }
 }
