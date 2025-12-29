@@ -13,6 +13,12 @@ export class AppController {
   }
 
   @Public()
+  @Get()
+  getHello2(): string {
+    return 'Hello from controller';
+  }
+
+  @Public()
   @Get('api/v1')
   getHelloApi(): string {
     return 'Hello from API';
