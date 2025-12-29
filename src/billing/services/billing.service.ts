@@ -1198,4 +1198,112 @@ export class BillingService {
       recentCustomers,
     };
   }
+
+  async getGlobalOverviewForAdmin(userId: number) {
+    // -----------------------------------
+    // 0️⃣ Resolve business
+    // -----------------------------------
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { business_id: true },
+    });
+
+    if (!user?.business_id) {
+      throw new ForbiddenException('User is not assigned to a business');
+    }
+
+    const businessId = user.business_id;
+
+    // =====================================================
+    // 1️⃣ TOP CARDS
+    // =====================================================
+
+    // Total Users
+    const totalUsers = await this.prisma.user.count({
+      where: {
+        business_id: businessId,
+        role: { name: 'USER' },
+      },
+    });
+
+    // Admin Count
+    const adminCount = await this.prisma.user.count({
+      where: {
+        business_id: businessId,
+        role: { name: 'ADMIN' },
+      },
+    });
+
+    // AI Responses (total AI calls)
+    const aiResponses = await this.prisma.aiCreditLog.count({
+      where: { business_id: businessId },
+    });
+
+    // =====================================================
+    // 2️⃣ RESPONSE CATEGORIES (Donut)
+    // =====================================================
+
+    const categoryRaw = await this.prisma.aiCreditLog.groupBy({
+      by: ['category'],
+      where: {
+        business_id: businessId,
+        category: { not: null },
+      },
+      _count: { id: true },
+    });
+
+    const totalCategoryCount =
+      categoryRaw.reduce((s, c) => s + c._count.id, 0) || 1;
+
+    const responseCategories = categoryRaw.map((c) => ({
+      label: c.category!,
+      percentage: Math.round((c._count.id / totalCategoryCount) * 100),
+    }));
+
+    // =====================================================
+    // 3️⃣ RECENT ACTIVITY (Human readable)
+    // =====================================================
+
+    const recentAiLogs = await this.prisma.aiCreditLog.findMany({
+      where: { business_id: businessId },
+      orderBy: { created_at: 'desc' },
+      take: 4,
+      include: {
+        user: { select: { name: true } },
+      },
+    });
+
+    const recentUsers = await this.prisma.user.findMany({
+      where: { business_id: businessId },
+      orderBy: { created_at: 'desc' },
+      take: 2,
+      select: { name: true, created_at: true },
+    });
+
+    const recentActivity = [
+      ...recentAiLogs.map((log) => ({
+        message: `${log.user?.name ?? 'A user'} generated an AI response`,
+        time: log.created_at,
+      })),
+      ...recentUsers.map((u) => ({
+        message: `${u.name} logged in to dashboard`,
+        time: u.created_at,
+      })),
+    ]
+      .sort((a, b) => b.time.getTime() - a.time.getTime())
+      .slice(0, 6);
+
+    // =====================================================
+    // FINAL RESPONSE (SCREENSHOT READY)
+    // =====================================================
+    return {
+      cards: {
+        totalUsers,
+        adminCount,
+        aiResponses,
+      },
+      responseCategories,
+      recentActivity,
+    };
+  }
 }

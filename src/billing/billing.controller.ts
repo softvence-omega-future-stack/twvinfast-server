@@ -4,6 +4,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   Param,
@@ -285,5 +286,16 @@ export class BillingController {
   @Get('analytics/global-overview')
   getGlobalOverview() {
     return this.billingService.getGlobalOverview();
+  }
+
+  //make route for admin
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN')
+  @Get('global-overview-admin')
+  getGlobalOverviewAdmin(@Req() req: any) {
+    if (!req?.user?.sub) {
+      throw new ForbiddenException('Invalid user context');
+    }
+    return this.billingService.getGlobalOverviewForAdmin(req.user.sub);
   }
 }
