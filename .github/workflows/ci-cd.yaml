@@ -122,7 +122,7 @@ jobs:
           script: |
             cd /home/${{ secrets.VPS_USERNAME }}/projects/${{ secrets.PACKAGE_NAME }}
 
-            container_status=$(docker-compose ps -q | xargs docker inspect --format '{{ .State.Status }}' | grep -vE 'exited|restarting')
+            container_status=$(docker compose ps -q | xargs docker inspect --format '{{ .State.Status }}' | grep -vE 'exited|restarting')
 
             if [[ -z "$container_status" ]]; then
               echo "Error: One or more containers are not running properly."
