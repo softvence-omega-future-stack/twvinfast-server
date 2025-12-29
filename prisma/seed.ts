@@ -487,9 +487,12 @@ async function main() {
     amount: 19,
     interval: 'month',
     email_limit: 500,
-    ai_credits: 10000,
+    ai_credits: 1000000,
     user_limit: 10, // 🔥 NEW
-    features: { inbox_ai: true },
+    features: {
+      inbox_ai: true,
+      multi_mailbox: true,
+    },
   });
 
   await seedPlan({
@@ -498,9 +501,12 @@ async function main() {
     amount: 49,
     interval: 'month',
     email_limit: 5000,
-    ai_credits: 100000,
+    ai_credits: 3000000,
     user_limit: 30, // 🔥 NEW
-    features: { inbox_ai: true },
+    features: {
+      inbox_ai: true,
+      multi_mailbox: true,
+    },
   });
 
   await seedPlan({
@@ -509,13 +515,11 @@ async function main() {
     amount: 99,
     interval: 'month',
     email_limit: 20000,
-    ai_credits: 300000,
+    ai_credits: 10000000,
     user_limit: 70, // 🔥 NEW
     features: {
       inbox_ai: true,
-      crm_sync: true,
       multi_mailbox: true,
-      automations: true,
     },
   });
 
@@ -525,9 +529,12 @@ async function main() {
     amount: 190,
     interval: 'year',
     email_limit: 1000 * 12,
-    ai_credits: 10000 * 12,
+    ai_credits: 1000000 * 12,
     user_limit: 80, // 🔥 SAME AS MONTHLY
-    features: { inbox_ai: true },
+    features: {
+      inbox_ai: true,
+      multi_mailbox: true,
+    },
   });
 
   console.log('🌱 Seed completed successfully!');
