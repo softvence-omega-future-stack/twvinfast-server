@@ -81,6 +81,22 @@ export class BillingWebhookService {
         renewal_date: end,
       },
     });
+
+    // plan fetch
+    const plan = await this.prisma.plan.findUnique({
+      where: { id: planId },
+    });
+
+    // 🔥 ADD AI CREDITS TO BUSINESS (TRIAL START)
+    if (plan?.ai_credits != null) {
+      await this.prisma.business.update({
+        where: { id: businessId },
+        data: {
+          ai_credits_total: plan.ai_credits,
+          ai_credits_used: 0,
+        },
+      });
+    }
   }
 
   // ---------------------------------------------
@@ -211,6 +227,17 @@ export class BillingWebhookService {
         invoice_url: invoice.hosted_invoice_url ?? null,
       },
     });
+
+    // 🔥 RESET / SET AI CREDITS ON SUCCESSFUL PAYMENT
+    if (planFromInvoice?.ai_credits != null) {
+      await this.prisma.business.update({
+        where: { id: sub.business_id },
+        data: {
+          ai_credits_total: planFromInvoice.ai_credits,
+          ai_credits_used: 0, // monthly reset
+        },
+      });
+    }
 
     this.logger.log(
       `✅ PaymentHistory saved | invoice=${invoice.id} | amount=${amount}`,
