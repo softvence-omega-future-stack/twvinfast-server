@@ -13,9 +13,9 @@ export class AppController {
   }
 
   @Public()
-  @Get()
+  @Get('api/v1/hello')
   getHello2(): string {
-    return 'Hello from controller';
+    return 'Hello from controller. Hello world';
   }
 
   @Public()
