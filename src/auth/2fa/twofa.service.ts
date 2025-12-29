@@ -92,6 +92,7 @@ export class TwoFAService {
 
     return {
       message: '2FA enabled successfully',
+      user,
       accessToken,
       refreshToken,
     };
