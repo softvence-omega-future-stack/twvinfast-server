@@ -96,6 +96,12 @@ export class BillingController {
 
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN')
+  @Get('plans-by-admin')
+  async getAllPlansByAdmin() {
+    return this.billingService.getAllPlans();
+  }
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN')
   @Put('subscription/update-plan')
   async updatePlan(@Body() body: any, @Req() req) {
     console.log(req.body.userId);
