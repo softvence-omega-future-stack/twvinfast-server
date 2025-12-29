@@ -211,6 +211,7 @@ model AiCreditLog {
   model       String
   tokens      Int
   action      AIActionType?
+  category   String?
   created_at  DateTime @default(now())
 
   business Business @relation(fields: [business_id], references: [id])
@@ -218,6 +219,8 @@ model AiCreditLog {
 
   @@index([business_id])
   @@index([user_id])
+  @@index([category])
+
 }
 
 model Opportunity {

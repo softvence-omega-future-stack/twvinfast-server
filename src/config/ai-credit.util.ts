@@ -12,6 +12,7 @@ export async function consumeAiCredits(params: {
   route: string;
   model?: string;
   action?: AIActionType;
+  category?: string; // 🔥 "Product", "Support", "Billing"
 }) {
   const business = await params.prisma.business.findUnique({
     where: { id: params.business_id },
@@ -40,6 +41,7 @@ export async function consumeAiCredits(params: {
       model: params.model ?? 'unknown',
       tokens: params.tokens,
       action: params.action,
+      category: params.category,
     },
   });
 
