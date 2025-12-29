@@ -30,7 +30,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe());
   
   //! remove krte hbe
-  app.useStaticAssets(join(process.cwd(), 'public'));
+  // app.useStaticAssets(join(process.cwd(), 'public'));
 
   await app.listen(process.env.PORT || 8800);
   console.log('🚀 Server running');
