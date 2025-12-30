@@ -49,10 +49,9 @@ jobs:
       - name: Docker build and push
         uses: docker/build-push-action@v6
         with:
+          context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:${{ github.sha }}
-          build-args: |
-            CACHE=0
+          tags: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:latest
 
   deploy:
     name: Deploy to VPS
