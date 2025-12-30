@@ -7,6 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+
+
 model Role {
   id          Int     @id @default(autoincrement())
   name        String  @unique
@@ -385,7 +388,7 @@ model Subscription {
   end_date               DateTime?
   renewal_date           DateTime?
   stripe_customer_id     String?
-  stripe_subscription_id String?
+  stripe_subscription_id String? @unique
   created_at             DateTime         @default(now())
   updated_at             DateTime         @updatedAt
   payments               PaymentHistory[]
