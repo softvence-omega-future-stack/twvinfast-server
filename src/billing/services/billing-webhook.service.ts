@@ -128,40 +128,159 @@ export class BillingWebhookService {
   // ---------------------------------------------
   // ---------------------------------------------
   // ---------------------------------------------
+  // private async invoicePaid(event: any) {
+  //   const rawInvoice = event.data.object;
+
+  //   if (!rawInvoice?.id) {
+  //     this.logger.warn(`⚠️ invoice id missing`);
+  //     return;
+  //   }
+
+  //   // 🔧 Stripe returns Response<Invoice>, unwrap safely
+  //   const invoice = (await this.stripeService.client.invoices.retrieve(
+  //     rawInvoice.id,
+  //     {
+  //       expand: ['lines.data', 'payment_intent'],
+  //     },
+  //   )) as any; // 🔥 CAST TO ANY (Stripe typing issue)
+
+  //   // -------- subscription id resolve --------
+  //   const stripeSubscriptionId =
+  //     typeof invoice.subscription === 'string'
+  //       ? invoice.subscription
+  //       : invoice.subscription?.id;
+
+  //   if (!stripeSubscriptionId) {
+  //     throw new Error('Subscription id missing on invoice');
+  //   }
+
+  //   // -------- idempotency check --------
+  //   const alreadyExists = await this.prisma.paymentHistory.findUnique({
+  //     where: { stripe_invoice_id: invoice.id },
+  //   });
+
+  //   if (alreadyExists) return;
+
+  //   // -------- find subscription (retry-safe) --------
+  //   let sub: Subscription | null = null;
+  //   for (let i = 0; i < 5; i++) {
+  //     sub = await this.prisma.subscription.findFirst({
+  //       where: { stripe_subscription_id: stripeSubscriptionId },
+  //     });
+  //     if (sub) break;
+  //     await new Promise((r) => setTimeout(r, 500));
+  //   }
+
+  //   if (!sub) {
+  //     throw new Error('Subscription not ready');
+  //   }
+
+  //   // -------- resolve price id (CAST line to any) --------
+  //   const line = invoice.lines?.data?.find(
+  //     (l: any) => l.price?.id || l.plan?.id, // 🔥 CAST TO ANY
+  //   );
+
+  //   const priceId = line?.price?.id ?? line?.plan?.id ?? null;
+
+  //   const planFromInvoice = priceId
+  //     ? await this.prisma.plan.findFirst({
+  //         where: { stripe_price_id: priceId },
+  //       })
+  //     : null;
+
+  //   // -------- amount & status --------
+  //   const amount = Number(invoice.amount_paid ?? 0) / 100;
+  //   const status = amount > 0 ? 'PAID' : 'FREE';
+
+  //   // -------- payment intent id (CAST invoice to any) --------
+  //   const paymentIntentId =
+  //     typeof invoice.payment_intent === 'string'
+  //       ? invoice.payment_intent
+  //       : (invoice.payment_intent?.id ?? null);
+
+  //   // -------- upsert payment history --------
+  //   await this.prisma.paymentHistory.upsert({
+  //     where: { stripe_invoice_id: invoice.id },
+  //     update: {
+  //       business_id: sub.business_id,
+  //       plan_id: planFromInvoice?.id ?? sub.plan_id,
+  //       subscription_id: sub.id,
+  //       amount,
+  //       currency: invoice.currency ?? 'usd',
+  //       payment_method:
+  //         invoice.payment_settings?.payment_method_types?.[0] ?? 'unknown',
+  //       status,
+  //       stripe_payment_intent_id: paymentIntentId,
+  //       invoice_url: invoice.hosted_invoice_url ?? null,
+  //     },
+  //     create: {
+  //       business_id: sub.business_id,
+  //       plan_id: planFromInvoice?.id ?? sub.plan_id,
+  //       subscription_id: sub.id,
+  //       amount,
+  //       currency: invoice.currency ?? 'usd',
+  //       payment_method:
+  //         invoice.payment_settings?.payment_method_types?.[0] ?? 'unknown',
+  //       status,
+  //       stripe_invoice_id: invoice.id,
+  //       stripe_payment_intent_id: paymentIntentId,
+  //       invoice_url: invoice.hosted_invoice_url ?? null,
+  //     },
+  //   });
+
+  //   // 🔥 RESET / SET AI CREDITS ON SUCCESSFUL PAYMENT
+  //   if (planFromInvoice?.ai_credits != null) {
+  //     await this.prisma.business.update({
+  //       where: { id: sub.business_id },
+  //       data: {
+  //         ai_credits_total: planFromInvoice.ai_credits,
+  //         ai_credits_used: 0, // monthly reset
+  //       },
+  //     });
+  //   }
+
+  //   this.logger.log(
+  //     `✅ PaymentHistory saved | invoice=${invoice.id} | amount=${amount}`,
+  //   );
+  // }
+
   private async invoicePaid(event: any) {
     const rawInvoice = event.data.object;
 
     if (!rawInvoice?.id) {
-      this.logger.warn(`⚠️ invoice id missing`);
+      this.logger.warn('⚠️ invoice id missing');
       return;
     }
 
-    // 🔧 Stripe returns Response<Invoice>, unwrap safely
+    // 🔧 Always re-fetch expanded invoice (safe + consistent)
     const invoice = (await this.stripeService.client.invoices.retrieve(
       rawInvoice.id,
       {
         expand: ['lines.data', 'payment_intent'],
       },
-    )) as any; // 🔥 CAST TO ANY (Stripe typing issue)
+    )) as any;
 
-    // -------- subscription id resolve --------
+    // -------- resolve subscription id --------
     const stripeSubscriptionId =
       typeof invoice.subscription === 'string'
         ? invoice.subscription
         : invoice.subscription?.id;
 
+    // ✅ IMPORTANT: ignore non-subscription invoices
     if (!stripeSubscriptionId) {
-      throw new Error('Subscription id missing on invoice');
+      this.logger.warn(
+        `⚠️ invoice.payment_succeeded ignored (no subscription) | invoice=${invoice.id}`,
+      );
+      return;
     }
 
     // -------- idempotency check --------
     const alreadyExists = await this.prisma.paymentHistory.findUnique({
       where: { stripe_invoice_id: invoice.id },
     });
-
     if (alreadyExists) return;
 
-    // -------- find subscription (retry-safe) --------
+    // -------- wait for subscription to exist (retry-safe) --------
     let sub: Subscription | null = null;
     for (let i = 0; i < 5; i++) {
       sub = await this.prisma.subscription.findFirst({
@@ -172,14 +291,16 @@ export class BillingWebhookService {
     }
 
     if (!sub) {
-      throw new Error('Subscription not ready');
+      this.logger.warn(
+        `⚠️ subscription not ready, skipping | sub=${stripeSubscriptionId}`,
+      );
+      return;
     }
 
-    // -------- resolve price id (CAST line to any) --------
+    // -------- resolve price id (Stripe typing is inconsistent) --------
     const line = invoice.lines?.data?.find(
-      (l: any) => l.price?.id || l.plan?.id, // 🔥 CAST TO ANY
+      (l: any) => l.price?.id || l.plan?.id,
     );
-
     const priceId = line?.price?.id ?? line?.plan?.id ?? null;
 
     const planFromInvoice = priceId
@@ -188,11 +309,11 @@ export class BillingWebhookService {
         })
       : null;
 
-    // -------- amount & status --------
+    // -------- amounts & status --------
     const amount = Number(invoice.amount_paid ?? 0) / 100;
     const status = amount > 0 ? 'PAID' : 'FREE';
 
-    // -------- payment intent id (CAST invoice to any) --------
+    // -------- payment intent id --------
     const paymentIntentId =
       typeof invoice.payment_intent === 'string'
         ? invoice.payment_intent
@@ -228,13 +349,13 @@ export class BillingWebhookService {
       },
     });
 
-    // 🔥 RESET / SET AI CREDITS ON SUCCESSFUL PAYMENT
+    // -------- reset AI credits on successful subscription payment --------
     if (planFromInvoice?.ai_credits != null) {
       await this.prisma.business.update({
         where: { id: sub.business_id },
         data: {
           ai_credits_total: planFromInvoice.ai_credits,
-          ai_credits_used: 0, // monthly reset
+          ai_credits_used: 0,
         },
       });
     }
