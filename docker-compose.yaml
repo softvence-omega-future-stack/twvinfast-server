@@ -37,31 +37,12 @@ services:
     networks:
       - twvinfast
 
-  caddy:
-    image: caddy:latest
-    container_name: twvinfast_caddy
-    restart: always
-    profiles:
-      - prod
-    ports:
-      - 80:80
-      - 443:443
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - twvinfast
-
 volumes:
   twvinfast_pgdata:
   twvinfast_redisdata:
   uploads:
   uploads-file:
   uploads-profile-images:
-
-  caddy_data:
-  caddy_config:
 
 networks:
   twvinfast:
