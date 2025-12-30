@@ -350,7 +350,7 @@ ${original.body_text ?? ''}`;
         : payload.prompt;
 
       const response = await axios.post(
-        'http://68.183.192.161:8000/api/v1/emails/generate',
+        'https://ai.replii.ca/api/v1/emails/generate',
         new URLSearchParams({
           body: finalPrompt,
           organization_name: payload.organization_name,
@@ -405,11 +405,9 @@ ${original.body_text ?? ''}`;
     user_id: number;
   }) {
     try {
-      const res = await axios.post(
-        'http://68.183.192.161:8000/reply',
-        payload,
-        { headers: { 'Content-Type': 'application/json' } },
-      );
+      const res = await axios.post('https://ai.replii.ca/reply', payload, {
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       // 🔴 AI CREDIT DEDUCT
       if (res.data?.token_usage?.total_tokens) {
