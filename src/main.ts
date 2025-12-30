@@ -11,7 +11,8 @@ async function bootstrap() {
   });
 
   // 🔥 Stripe webhook — RAW body only
-  app.use('/billing/webhook', bodyParser.raw({ type: '*/*' }));
+  // app.use('/billing/webhook', bodyParser.raw({ type: '*/*' }));
+  app.use('/billing/webhook', bodyParser.raw({ type: 'application/json' }));
 
   // ✅ Normal routes
   app.enableCors({
@@ -28,7 +29,7 @@ async function bootstrap() {
   });
 
   app.useGlobalPipes(new ValidationPipe());
-  
+
   //! remove krte hbe
   // app.useStaticAssets(join(process.cwd(), 'public'));
 
