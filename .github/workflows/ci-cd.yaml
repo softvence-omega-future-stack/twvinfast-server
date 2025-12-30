@@ -43,15 +43,15 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Docker buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Setup docker action
+        uses: docker/setup-docker-action@v4
 
-      - name: Docker build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:latest
+      - name: Build docker image
+        run: |
+          docker build --no-cache -t ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:latest .
+      - name: Push docker image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/${{ secrets.PACKAGE_NAME }}:latest
 
   deploy:
     name: Deploy to VPS
