@@ -350,7 +350,7 @@ ${original.body_text ?? ''}`;
         : payload.prompt;
 
       const response = await axios.post(
-        'https://twinfast-emailassistant-ai.onrender.com/api/v1/emails/generate',
+        'http://68.183.192.161:8000/api/v1/emails/generate',
         new URLSearchParams({
           body: finalPrompt,
           organization_name: payload.organization_name,
@@ -406,7 +406,7 @@ ${original.body_text ?? ''}`;
   }) {
     try {
       const res = await axios.post(
-        'https://twinfast-emailassistant-ai.onrender.com/reply',
+        'http://68.183.192.161:8000/reply',
         payload,
         { headers: { 'Content-Type': 'application/json' } },
       );
