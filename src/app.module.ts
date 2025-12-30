@@ -28,7 +28,7 @@ import { AiModule } from './admin/ai/ai.module';
     BillingModule,
     StripeModule,
     AdminModule,
-    AiModule
+    AiModule,
   ],
   controllers: [AppController],
   providers: [
