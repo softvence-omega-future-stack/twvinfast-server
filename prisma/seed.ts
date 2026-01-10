@@ -427,14 +427,14 @@ async function main() {
   // ---------------------------------------------------------
   // 2️⃣ SUPER ADMIN
   // ---------------------------------------------------------
-  const hashed = await bcrypt.hash('Admin@123', 10);
+  const hashed = await bcrypt.hash('Tw123456@gT', 10);
 
   const superAdmin = await prisma.user.upsert({
-    where: { email: 'admin@system.com' },
+    where: { email: 'lnasnapleads@gmail.com' },
     update: {},
     create: {
       name: 'Super Admin',
-      email: 'admin@system.com',
+      email: 'lnasnapleads@gmail.com',
       password_hash: hashed,
       role_id: 1,
       business_id: null,
