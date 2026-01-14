@@ -142,7 +142,7 @@ jobs:
             fi
 
             response_code=$(curl --write-out "%{http_code}" --silent --output /dev/null http://localhost:${{ secrets.PORT }}/api/v1)
-
+            echo "response code: $response_code"
             if [[ "$response_code" -eq 200 ]]; then
               echo "Deployment successful. API responding with 200."
             else
