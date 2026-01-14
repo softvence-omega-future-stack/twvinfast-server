@@ -121,34 +121,67 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs:
       - deploy
-
+  
     steps:
-      - name: Verify containers and API
+      - name: Verify containers and API health
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           password: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /home/${{ secrets.VPS_USERNAME }}/projects/${{ secrets.PACKAGE_NAME }}
-
-            container_status=$(docker compose ps -q | xargs docker inspect --format '{{ .State.Status }}' | grep -vE 'exited|restarting')
-
+            set -e  # Exit immediately if any command fails
+  
+            PROJECT_DIR="/home/${{ secrets.VPS_USERNAME }}/projects/${{ secrets.PACKAGE_NAME }}"
+            API_URL="http://localhost:${{ secrets.PORT }}/api/v1"
+  
+            echo "📁 Moving to project directory"
+            cd "$PROJECT_DIR"
+  
+            echo "🐳 Checking container status..."
+            container_status=$(docker compose ps -q \
+              | xargs docker inspect --format '{{ .State.Status }}' \
+              | grep -vE 'exited|restarting' || true)
+  
             if [[ -z "$container_status" ]]; then
-              echo "Error: One or more containers are not running properly."
+              echo "❌ Error: One or more containers are not running properly"
+              docker compose ps
               exit 1
-            else
-              echo "All containers are running."
             fi
+  
+            echo "✅ All containers are running"
+  
+            echo "🌐 Checking API health with retries..."
+  
+            MAX_RETRIES=5
+            SLEEP_SECONDS=5
+            ATTEMPT=1
+            SUCCESS=false
+  
+            while [[ $ATTEMPT -le $MAX_RETRIES ]]; do
+              echo "➡️ Attempt $ATTEMPT/$MAX_RETRIES"
+  
+              response_code=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL" || true)
+              echo "Response code: $response_code"
+  
+              if [[ "$response_code" == "200" ]]; then
+                echo "✅ API is healthy (200 OK)"
+                SUCCESS=true
+                break
+              fi
+  
+              echo "⏳ API not ready yet, sleeping for ${SLEEP_SECONDS}s..."
+              sleep $SLEEP_SECONDS
+              ATTEMPT=$((ATTEMPT + 1))
+            done
+  
+            if [[ "$SUCCESS" != "true" ]]; then
+              echo "❌ API did not return 200 after ${MAX_RETRIES} attempts"
+              exit 1
+            fi
+  
+            echo "🎉 Deployment verification successful!"
 
-            response_code=$(curl --write-out "%{http_code}" --silent --output /dev/null http://localhost:${{ secrets.PORT }}/api/v1)
-            echo "response code: $response_code"
-            if [[ "$response_code" -eq 200 ]]; then
-              echo "Deployment successful. API responding with 200."
-            else
-              echo "Error: API returned status $response_code"
-              exit 1
-            fi
 
   notify:
     name: Notify Telegram Project Group on Failure
