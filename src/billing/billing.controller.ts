@@ -136,15 +136,9 @@ export class BillingController {
     return this.billingService.updateClientPlan(Number(planId), dto);
   }
 
-  // -------------------------------------------------------------------------
-  // STRIPE WEBHOOK (Public Route)
-  //
-  // 🔥 IMPORTANT:
-  // main.ts এ এই রুটের জন্য raw body enable থাকতে হবে:
-  //
-  // app.use('/billing/webhook', bodyParser.raw({ type: '*/*' }));
-  //
-  // -------------------------------------------------------------------------
+
+  // Webhook Issue Fixed
+
   @Post('webhook')
   @Public()
   async handleWebhook(
