@@ -22,12 +22,15 @@ export class SmtpController {
     @Body('data') data: string,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
+    console.log("Data", data)
     const payload = JSON.parse(data);
-    return this.smtpService.sendMail({
+    console.log("payload", payload)
+    return await this.smtpService.sendMail({
       ...payload,
       files,
     });
   }
+  
   /* ============ SAVE DRAFT ============ */
   @Post('draft')
   @UseInterceptors(FilesInterceptor('files', 10, mailMulterConfig))
@@ -37,7 +40,7 @@ export class SmtpController {
   ) {
     const payload = JSON.parse(data);
 
-    return this.smtpService.saveDraft({
+    return await this.smtpService.saveDraft({
       ...payload,
       files,
     });
@@ -66,7 +69,7 @@ export class SmtpController {
     @Body('organization_name') organizationName: string,
     @Body('tone') tone?: string,
   ) {
-    return this.smtpService.generateEmail({
+    return await this.smtpService.generateEmail({
       prompt,
       organization_name: organizationName,
       tone,
